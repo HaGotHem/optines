@@ -2,6 +2,37 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [1.3.0] - 2024-12-19
+
+### 🧹 Nettoyage de l'interface
+- **Suppression de la notification animée d'heure hors plage** : Remplacement du bandeau rouge animé par une popup d'erreur (`Alert.alert`)
+- **Interface mobile optimisée** : Plus de problème d'affichage dans la notch du téléphone
+- **Gestion d'erreur améliorée** : Popup de confirmation pour les heures hors des horaires de travail
+
+### 🔧 Améliorations de l'interface
+- **Section "Outils de développement" repliable** : 
+  - Regroupement de tous les boutons de debug et de test
+  - Interface repliable pour masquer les outils de développement
+  - Accès centralisé aux fonctionnalités de test
+- **Boutons de debug déplacés** : Tous les boutons de test retirés de l'interface principale
+- **Interface utilisateur épurée** : Seuls les boutons essentiels visibles par défaut
+
+### 🐛 Corrections techniques
+- **Suppression des erreurs `showTimeWarning`** : Nettoyage complet du code lié à l'ancienne notification animée
+- **Variables non définies** : Suppression de toutes les références à `showTimeWarning`, `notificationFadeAnim`, `cooldownProgress`
+- **Stabilité améliorée** : Plus d'erreurs de rendu liées aux variables supprimées
+
+### 🎯 Impact utilisateur
+- **Interface plus propre** : Suppression des éléments de debug visibles par défaut
+- **Meilleure expérience mobile** : Plus de bandeau parasite dans la notch
+- **Gestion d'erreur plus claire** : Popup explicite pour les heures hors plage
+- **Accès aux outils de développement** : Section dédiée et repliable pour les développeurs
+
+### 📝 Fichiers modifiés
+- `app/(manager-tabs)/calculator.tsx` - Nettoyage complet de l'interface et suppression des notifications animées
+
+---
+
 ## [1.2.0] - 2024-12-19
 
 ### 🚀 Nouvelles fonctionnalités
