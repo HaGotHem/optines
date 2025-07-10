@@ -117,6 +117,16 @@ export default function JobCalculatorTab() {
     isLoading: employeesLoading
   } = useSupabaseTeam(managerId);
 
+  // Debug des employés chargés
+  useEffect(() => {
+    console.log('🟦 [DEBUG] Calculator - Employees state changed:', {
+      managerId,
+      allEmployees: allEmployees ? allEmployees.length : 'null/undefined',
+      employeesLoading,
+      employees: allEmployees ? allEmployees.map(e => ({id: e.id, name: e.name, role: e.role})) : 'null/undefined'
+    });
+  }, [allEmployees, employeesLoading, managerId]);
+
   // Hook Supabase pour gérer les tâches - TOUJOURS APPELÉ
   const {
     tasks: supabaseTasks,
@@ -274,19 +284,16 @@ export default function JobCalculatorTab() {
 
   const calculerStatsColis = async () => {
     try {
-      console.log('🔍 CalculerStatsColis - Début du calcul');
-      const tasksString = await AsyncStorage.getItem('scheduledTasks');
-      console.log('📦 Tâches stockées:', tasksString);
-      
-      const tasks = tasksString ? JSON.parse(tasksString) : [];
+      console.log('🔍 CalculerStatsColis - Début du calcul (Supabase)');
       const selectedDateString = selectedDate.toISOString().split('T')[0];
       console.log('📅 Date sélectionnée:', selectedDateString);
       
-      const tasksForSelectedDate = tasks.filter((t: any) => t.date === selectedDateString);
-      console.log('📋 Tâches pour la date sélectionnée:', tasksForSelectedDate);
+      // Utiliser les tâches de Supabase au lieu d'AsyncStorage
+      const tasksForSelectedDate = await getTasksByDate(selectedDateString);
+      console.log('📋 Tâches Supabase pour la date sélectionnée:', tasksForSelectedDate);
       
       const total = tasksForSelectedDate.reduce((sum: number, t: any) => sum + (t.packages || 0), 0);
-      const traites = tasksForSelectedDate.reduce((sum: number, t: any) => sum + (t.packages || 0), 0);
+      const traites = tasksForSelectedDate.filter((t: any) => t.is_completed).reduce((sum: number, t: any) => sum + (t.packages || 0), 0);
       
       console.log('📊 Résultats calcul:', { total, traites, pourcentage: total > 0 ? Math.round((traites / total) * 100) : 0 });
       
@@ -863,7 +870,12 @@ export default function JobCalculatorTab() {
   const loadTasksForSelectedDate = async () => {
     try {
       const selectedDateString = selectedDate.toISOString().split('T')[0];
-      const filtered = getTasksByDate(selectedDateString);
+      const filtered = await getTasksByDate(selectedDateString);
+      console.log('📋 Tasks loaded for selected date:', {
+        date: selectedDateString,
+        tasksCount: filtered.length,
+        tasks: filtered.map(t => ({id: t.id, title: t.title, packages: t.packages}))
+      });
       setTasksForSelectedDate(filtered);
     } catch (e) {
       console.error('Erreur lors du chargement des tâches:', e);
@@ -875,6 +887,13 @@ export default function JobCalculatorTab() {
   useEffect(() => {
     loadTasksForSelectedDate();
   }, [selectedDate, showTaskModal]);
+
+  // Charger les tâches quand les hooks Supabase sont prêts
+  useEffect(() => {
+    if (!tasksLoading && getTasksByDate) {
+      loadTasksForSelectedDate();
+    }
+  }, [tasksLoading]);
 
   // Marquer une tâche comme traitée via Supabase
   const handleMarkTaskAsDone = async (taskId: string) => {
@@ -1313,6 +1332,68 @@ export default function JobCalculatorTab() {
             <Text style={[styles.secondaryButtonText, isDark && styles.secondaryButtonTextDark]}>Sauvegarder le calcul</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Tâches planifiées du jour */}
+        <View style={[styles.section, isDark && styles.sectionDark]}>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Tâches planifiées du jour</Text>
+            <TouchableOpacity onPress={() => {
+              console.log('🔄 Rafraîchissement manuel des tâches');
+              loadTasksForSelectedDate();
+            }}>
+              <Text style={[styles.refreshText, isDark && styles.textDark]}>🔄 Actualiser</Text>
+            </TouchableOpacity>
+          </View>
+          
+          {tasksForSelectedDate.length === 0 ? (
+            <View style={[styles.noTasksCard, isDark && styles.cardDark]}>
+              <Text style={[styles.noTasksText, isDark && styles.textDark]}>
+                Aucune tâche planifiée pour le {formatDate(selectedDate)}
+              </Text>
+              <Text style={[styles.noTasksSubtext, isDark && styles.textSecondaryDark]}>
+                Planifiez votre première tâche avec le calculateur ci-dessus
+              </Text>
+            </View>
+          ) : (
+            tasksForSelectedDate.map((task) => (
+              <View key={task.id} style={[styles.taskCard, isDark && styles.cardDark]}>
+                <View style={styles.taskHeader}>
+                  <Text style={[styles.taskTitle, isDark && styles.textDark]}>{task.title}</Text>
+                  <View style={styles.taskActions}>
+                    <TouchableOpacity 
+                      onPress={() => handleMarkTaskAsDone(task.id)}
+                      style={styles.completeButton}
+                    >
+                      <Text style={styles.completeButtonText}>✓ Terminer</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      onPress={() => handleDeleteTask(task.id)}
+                      style={styles.deleteButton}
+                    >
+                      <Text style={styles.deleteButtonText}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                <View style={styles.taskDetails}>
+                  <Text style={[styles.taskTime, isDark && styles.textSecondaryDark]}>
+                    ⏰ {task.start_time} - {task.end_time}
+                  </Text>
+                  <Text style={[styles.taskPackages, isDark && styles.textSecondaryDark]}>
+                    📦 {task.packages} colis
+                  </Text>
+                  <Text style={[styles.taskTeam, isDark && styles.textSecondaryDark]}>
+                    👥 {task.team_size} équipier{task.team_size > 1 ? 's' : ''}
+                  </Text>
+                </View>
+                {task.is_completed && (
+                  <View style={styles.completedBadge}>
+                    <Text style={styles.completedBadgeText}>✅ Terminée</Text>
+                  </View>
+                )}
+              </View>
+            ))
+          )}
+        </View>
       </ScrollView>
 
       {/* Interactive Calendar Date Picker */}
@@ -1694,48 +1775,7 @@ export default function JobCalculatorTab() {
         </View>
       </Modal>
 
-      {/* AJOUT : Liste des tâches planifiées du jour avec swipe */}
-      <View style={{ margin: 16 }}>
-        <Text style={{ fontWeight: 'bold', fontSize: 16, marginBottom: 8 }}>
-          Tâches planifiées du jour
-        </Text>
-        {tasksForSelectedDate.length === 0 && (
-          <Text style={{ color: '#6b7280' }}>Aucune tâche planifiée pour ce jour.</Text>
-        )}
-        {tasksForSelectedDate.map((task) => (
-          <Swipeable
-            key={task.id}
-            renderLeftActions={() => (
-              <View style={{ backgroundColor: '#10b981', justifyContent: 'center', alignItems: 'center', flex: 1, minWidth: 80 }}>
-                <Text style={{ color: 'white', padding: 20, textAlign: 'center', fontSize: 14 }}>Traiter</Text>
-              </View>
-            )}
-            renderRightActions={() => (
-              <View style={{ backgroundColor: '#ef4444', justifyContent: 'center', alignItems: 'center', flex: 1, minWidth: 80 }}>
-                <Text style={{ color: 'white', padding: 20, textAlign: 'center', fontSize: 14 }}>Supprimer</Text>
-              </View>
-            )}
-            onSwipeableLeftOpen={() => handleMarkTaskAsDone(task.id)}
-            onSwipeableRightOpen={() => handleDeleteTask(task.id)}
-          >
-            <View style={{
-              backgroundColor: 'white',
-              borderRadius: 8,
-              padding: 16,
-              marginBottom: 8,
-              shadowColor: '#000',
-              shadowOpacity: 0.05,
-              shadowRadius: 4,
-              elevation: 2,
-            }}>
-              <Text style={{ fontWeight: 'bold' }}>{task.title}</Text>
-              <Text>Heure : {task.start_time} - {task.end_time}</Text>
-              <Text>Colis : {task.packages}</Text>
-              <Text>Équipe : {task.team_size}</Text>
-            </View>
-          </Swipeable>
-        ))}
-      </View>
+
 
       {/* Outils de développement (section dédiée, repliable, compacte) */}
       <View style={{ margin: 16, marginTop: 16, padding: 8, backgroundColor: '#f3f4f6', borderRadius: 8, borderWidth: 1, borderColor: '#e5e7eb' }}>
@@ -2902,5 +2942,109 @@ const styles = StyleSheet.create({
   },
   modalTextDark: {
     color: '#e5e7eb',
+  },
+  refreshText: {
+    fontSize: 14,
+    color: '#3b82f6',
+    fontWeight: '500',
+  },
+  noTasksCard: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    padding: 20,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderStyle: 'dashed',
+  },
+  noTasksText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  noTasksSubtext: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+  },
+  taskCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  taskHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  taskTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1a1a1a',
+    flex: 1,
+  },
+  taskActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  completeButton: {
+    backgroundColor: '#10b981',
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  completeButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+  deleteButton: {
+    backgroundColor: '#ef4444',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  deleteButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+  taskDetails: {
+    gap: 4,
+  },
+  taskTime: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  taskPackages: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  taskTeam: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  completedBadge: {
+    backgroundColor: '#d1fae5',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    alignSelf: 'flex-start',
+    marginTop: 8,
+  },
+  completedBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#065f46',
   },
 });
