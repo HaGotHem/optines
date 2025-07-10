@@ -12,6 +12,9 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { ChartBar as BarChart3, Users, TrendingUp, TriangleAlert as AlertTriangle, CircleCheck as CheckCircle, Clock, Target, Bell, X, Package, Timer, LogOut, Settings } from 'lucide-react-native';
 import { router } from 'expo-router';
+import { PerformanceService } from '../services/PerformanceService';
+import { useSupabaseTasks } from '../hooks/useSupabaseTasks';
+import { useSupabaseUsers } from '../hooks/useSupabaseUsers';
 
 const { width } = Dimensions.get('window');
 
@@ -27,139 +30,76 @@ interface Alert {
 export default function DirecteurDashboard() {
   const [alertModal, setAlertModal] = useState(false);
   const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
+  const [managersPerformance, setManagersPerformance] = useState<any[]>([]);
+  const [globalStats, setGlobalStats] = useState<any>({});
+  const [isLoading, setIsLoading] = useState(true);
 
-  const managers = [
-    {
-      id: 1,
-      name: 'Marie Dubois',
-      section: 'Fruits & Légumes',
-      performance: 92,
-      packagesProcessed: 485,
-      totalPackages: 550,
-      teamSize: 3,
-      reinforcementWorker: 1,
-      status: 'excellent',
-      alerts: 0,
-      trend: 'up'
-    },
-    {
-      id: 2,
-      name: 'Pierre Martin',
-      section: 'Boucherie',
-      performance: 76,
-      packagesProcessed: 312,
-      totalPackages: 450,
-      teamSize: 2,
-      reinforcementWorker: 0,
-      status: 'warning',
-      alerts: 2,
-      trend: 'down'
-    },
-    {
-      id: 3,
-      name: 'Sophie Laurent',
-      section: 'Poissonnerie',
-      performance: 95,
-      packagesProcessed: 523,
-      totalPackages: 550,
-      teamSize: 2,
-      reinforcementWorker: 1,
-      status: 'excellent',
-      alerts: 0,
-      trend: 'up'
-    },
-    {
-      id: 4,
-      name: 'Thomas Durand',
-      section: 'Charcuterie',
-      performance: 68,
-      packagesProcessed: 187,
-      totalPackages: 400,
-      teamSize: 3,
-      reinforcementWorker: 0,
-      status: 'critical',
-      alerts: 3,
-      trend: 'down'
-    },
-    {
-      id: 5,
-      name: 'Julie Moreau',
-      section: 'Fromage',
-      performance: 89,
-      packagesProcessed: 456,
-      totalPackages: 500,
-      teamSize: 2,
-      reinforcementWorker: 1,
-      status: 'good',
-      alerts: 1,
-      trend: 'up'
-    },
-    {
-      id: 6,
-      name: 'Antoine Leroy',
-      section: 'Épicerie Salée',
-      performance: 85,
-      packagesProcessed: 398,
-      totalPackages: 480,
-      teamSize: 3,
-      reinforcementWorker: 0,
-      status: 'good',
-      alerts: 0,
-      trend: 'stable'
-    },
-    {
-      id: 7,
-      name: 'Camille Rousseau',
-      section: 'Épicerie Sucrée',
-      performance: 91,
-      packagesProcessed: 467,
-      totalPackages: 520,
-      teamSize: 2,
-      reinforcementWorker: 1,
-      status: 'excellent',
-      alerts: 0,
-      trend: 'up'
-    },
-    {
-      id: 8,
-      name: 'Lucas Bernard',
-      section: 'Surgelés',
-      performance: 78,
-      packagesProcessed: 334,
-      totalPackages: 430,
-      teamSize: 3,
-      reinforcementWorker: 0,
-      status: 'warning',
-      alerts: 1,
-      trend: 'down'
-    },
-    {
-      id: 9,
-      name: 'Emma Petit',
-      section: 'Produits Laitiers',
-      performance: 88,
-      packagesProcessed: 445,
-      totalPackages: 500,
-      teamSize: 2,
-      reinforcementWorker: 1,
-      status: 'good',
-      alerts: 0,
-      trend: 'up'
-    },
-    {
-      id: 10,
-      name: 'Nicolas Garnier',
-      section: 'Boissons',
-      performance: 82,
-      packagesProcessed: 378,
-      totalPackages: 460,
-      teamSize: 3,
-      reinforcementWorker: 0,
-      status: 'good',
-      alerts: 1,
-      trend: 'stable'
-    }
-  ];
+  // Hooks pour récupérer les données
+  const { tasks: allTasks, isLoading: tasksLoading } = useSupabaseTasks({});
+  const { users: allUsers, isLoading: usersLoading } = useSupabaseUsers();
+
+  // Charger les données de performance
+  useEffect(() => {
+    const loadPerformanceData = async () => {
+      if (tasksLoading || usersLoading || !allUsers || !allTasks) {
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        
+        // Filtrer les managers
+        const managers = allUsers.filter(user => user.role === 'manager');
+        console.log('📊 Managers trouvés:', managers.length, managers.map(m => ({ name: m.full_name, section: m.section })));
+        
+        // Calculer les performances seulement pour les managers avec des vraies tâches
+        const performanceData = [];
+        
+        managers.forEach(manager => {
+          // Chercher les vraies tâches du manager
+          const managerTasks = allTasks.filter(task => {
+            console.log(`🔍 Vérification tâche pour manager ${manager.full_name}:`, {
+              taskManagerId: task.manager_id,
+              userManagerId: manager.app_metadata?.user_id?.toString(),
+              match: task.manager_id === manager.app_metadata?.user_id?.toString()
+            });
+            return task.manager_id === manager.app_metadata?.user_id?.toString();
+          });
+          
+          console.log(`📋 Tâches trouvées pour ${manager.full_name}:`, managerTasks.length);
+          
+          // N'ajouter que les managers qui ont des tâches réelles
+          if (managerTasks.length > 0) {
+            const performance = PerformanceService.calculateManagerPerformance(
+              manager.app_metadata?.user_id?.toString() || manager.id,
+              manager.full_name || manager.username || 'Manager',
+              manager.section || 'Section inconnue',
+              managerTasks
+            );
+            
+            console.log(`📊 Performance calculée pour ${manager.full_name}:`, performance);
+            performanceData.push(performance);
+          } else {
+            console.log(`⚠️ Manager ${manager.full_name} ignoré (aucune tâche réelle)`);
+          }
+        });
+
+        console.log('📊 Données de performance générées:', performanceData.length);
+        
+        // Calculer les statistiques globales
+        const stats = PerformanceService.calculateGlobalStats(performanceData);
+        
+        setManagersPerformance(performanceData);
+        setGlobalStats(stats);
+      } catch (error) {
+        console.error('❌ Erreur lors du chargement des données de performance:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadPerformanceData();
+  }, [allTasks, allUsers, tasksLoading, usersLoading]);
 
   const alerts = [
     {
@@ -219,17 +159,10 @@ export default function DirecteurDashboard() {
     return { hours, minutes, totalMinutes: Math.floor(totalTimeSeconds / 60) };
   };
 
-  // Calculate average packages processed
-  const totalPackages = managers.reduce((sum, manager) => sum + manager.packagesProcessed, 0);
-  const averagePackages = Math.round(totalPackages / managers.length);
-
-  // Calculate total remaining time across all managers
-  const totalRemainingMinutes = managers.reduce((sum, manager) => {
-    const time = calculateRemainingTime(manager);
-    return sum + time.totalMinutes;
-  }, 0);
-  const avgRemainingHours = Math.floor(totalRemainingMinutes / managers.length / 60);
-  const avgRemainingMinutes = Math.floor((totalRemainingMinutes / managers.length) % 60);
+  // Calculer les statistiques avec les nouvelles données
+  const averagePackages = globalStats.processedPackages || 0;
+  const avgRemainingHours = Math.floor((globalStats.averageRemainingTime || 0) / 60);
+  const avgRemainingMinutes = Math.floor((globalStats.averageRemainingTime || 0) % 60);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -324,22 +257,22 @@ export default function DirecteurDashboard() {
         <View style={styles.statsContainer}>
           <View style={styles.statCard}>
             <Users color="#3b82f6" size={24} strokeWidth={2} />
-            <Text style={styles.statValue}>10</Text>
+            <Text style={styles.statValue}>{isLoading ? '...' : managersPerformance.length}</Text>
             <Text style={styles.statLabel}>Rayons</Text>
           </View>
           <View style={styles.statCard}>
             <Package color="#10b981" size={24} strokeWidth={2} />
-            <Text style={styles.statValue}>{averagePackages}</Text>
+            <Text style={styles.statValue}>{isLoading ? '...' : averagePackages}</Text>
             <Text style={styles.statLabel}>Colis/jour</Text>
           </View>
           <View style={styles.statCard}>
             <Timer color="#f59e0b" size={24} strokeWidth={2} />
-            <Text style={styles.statValue}>{avgRemainingHours}h{avgRemainingMinutes.toString().padStart(2, '0')}</Text>
+            <Text style={styles.statValue}>{isLoading ? '...' : `${avgRemainingHours}h${avgRemainingMinutes.toString().padStart(2, '0')}`}</Text>
             <Text style={styles.statLabel}>Temps moy.</Text>
           </View>
           <View style={styles.statCard}>
             <AlertTriangle color="#ef4444" size={24} strokeWidth={2} />
-            <Text style={styles.statValue}>{alerts.length}</Text>
+            <Text style={styles.statValue}>{isLoading ? '...' : (globalStats.totalAlerts || alerts.length)}</Text>
             <Text style={styles.statLabel}>Alertes</Text>
           </View>
         </View>
@@ -368,87 +301,105 @@ export default function DirecteurDashboard() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Performance des Rayons</Text>
           
-          <View style={styles.managersGrid}>
-            {managers.map((manager) => {
-              const remainingTime = calculateRemainingTime(manager);
-              return (
-                <View key={manager.id} style={styles.managerCard}>
-                  <View style={styles.managerHeader}>
-                    <View style={styles.managerInfo}>
-                      <Text style={styles.managerName}>{manager.name}</Text>
-                      <Text style={styles.managerSection}>{manager.section}</Text>
+          {isLoading ? (
+            <View style={styles.loadingContainer}>
+              <Text style={styles.loadingText}>Chargement des données de performance...</Text>
+            </View>
+          ) : managersPerformance.length === 0 ? (
+            <View style={styles.loadingContainer}>
+              <Text style={styles.loadingText}>
+                Aucune tâche planifiée trouvée.{'\n'}
+                Seuls les managers ayant planifié des tâches apparaissent ici.
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.managersGrid}>
+              {managersPerformance.map((manager) => {
+                const remainingTime = {
+                  hours: Math.floor(manager.remainingTimeMinutes / 60),
+                  minutes: manager.remainingTimeMinutes % 60,
+                  totalMinutes: manager.remainingTimeMinutes
+                };
+                
+                return (
+                  <View key={manager.id} style={styles.managerCard}>
+                    <View style={styles.managerHeader}>
+                      <View style={styles.managerInfo}>
+                        <Text style={styles.managerName}>{manager.name}</Text>
+                        <Text style={styles.managerSection}>{manager.section}</Text>
+                      </View>
+                      <View 
+                        style={[
+                          styles.statusIndicator, 
+                          { backgroundColor: getStatusColor(manager.status) }
+                        ]} 
+                      />
                     </View>
-                    <View 
-                      style={[
-                        styles.statusIndicator, 
-                        { backgroundColor: getStatusColor(manager.status) }
-                      ]} 
-                    />
-                  </View>
 
-                  <View style={styles.metricsContainer}>
-                    <View style={styles.metric}>
-                      <Text style={styles.metricLabel}>Colis traités (aujourd'hui)</Text>
-                      <View style={styles.packageMetric}>
-                        <Package color={getPackageStatusColor(manager.packagesProcessed, manager.totalPackages)} size={16} strokeWidth={2} />
-                        <Text style={[styles.packageCount, { color: getPackageStatusColor(manager.packagesProcessed, manager.totalPackages) }]}>
-                          {manager.packagesProcessed} / {manager.totalPackages}
+                    <View style={styles.metricsContainer}>
+                      <View style={styles.metric}>
+                        <Text style={styles.metricLabel}>Colis traités (aujourd'hui)</Text>
+                        <View style={styles.packageMetric}>
+                          <Package color={getPackageStatusColor(manager.packagesProcessed, manager.totalPackages)} size={16} strokeWidth={2} />
+                          <Text style={[styles.packageCount, { color: getPackageStatusColor(manager.packagesProcessed, manager.totalPackages) }]}>
+                            {manager.packagesProcessed} / {manager.totalPackages}
+                          </Text>
+                        </View>
+                        <View style={styles.progressBar}>
+                          <View 
+                            style={[
+                              styles.progressFill, 
+                              { 
+                                width: manager.totalPackages > 0 ? `${(manager.packagesProcessed / manager.totalPackages) * 100}%` : '0%',
+                                backgroundColor: getPackageStatusColor(manager.packagesProcessed, manager.totalPackages)
+                              }
+                            ]} 
+                          />
+                        </View>
+                      </View>
+
+                      <View style={styles.metric}>
+                        <Text style={styles.metricLabel}>Temps restant estimé</Text>
+                        <View style={styles.timeMetric}>
+                          <Timer color={getTimeStatusColor(remainingTime.totalMinutes)} size={16} strokeWidth={2} />
+                          <Text style={[styles.timeCount, { color: getTimeStatusColor(remainingTime.totalMinutes) }]}>
+                            {remainingTime.hours}h {remainingTime.minutes.toString().padStart(2, '0')}min
+                          </Text>
+                        </View>
+                        <View style={styles.progressBar}>
+                          <View 
+                            style={[
+                              styles.progressFill, 
+                              { 
+                                width: `${Math.min((remainingTime.totalMinutes / 240) * 100, 100)}%`,
+                                backgroundColor: getTimeStatusColor(remainingTime.totalMinutes)
+                              }
+                            ]} 
+                          />
+                        </View>
+                      </View>
+                    </View>
+
+                    <View style={styles.managerFooter}>
+                      <View style={styles.teamInfo}>
+                        <Users color="#6b7280" size={16} strokeWidth={2} />
+                        <Text style={styles.teamSize}>
+                          {manager.teamSize} équipiers
+                          {manager.reinforcementWorker > 0 && ` + ${manager.reinforcementWorker} renfort`}
                         </Text>
                       </View>
-                      <View style={styles.progressBar}>
-                        <View 
-                          style={[
-                            styles.progressFill, 
-                            { 
-                              width: `${(manager.packagesProcessed / manager.totalPackages) * 100}%`,
-                              backgroundColor: getPackageStatusColor(manager.packagesProcessed, manager.totalPackages)
-                            }
-                          ]} 
-                        />
-                      </View>
-                    </View>
-
-                    <View style={styles.metric}>
-                      <Text style={styles.metricLabel}>Temps restant estimé</Text>
-                      <View style={styles.timeMetric}>
-                        <Timer color={getTimeStatusColor(remainingTime.totalMinutes)} size={16} strokeWidth={2} />
-                        <Text style={[styles.timeCount, { color: getTimeStatusColor(remainingTime.totalMinutes) }]}>
-                          {remainingTime.hours}h {remainingTime.minutes.toString().padStart(2, '0')}min
-                        </Text>
-                      </View>
-                      <View style={styles.progressBar}>
-                        <View 
-                          style={[
-                            styles.progressFill, 
-                            { 
-                              width: `${Math.min((remainingTime.totalMinutes / 240) * 100, 100)}%`,
-                              backgroundColor: getTimeStatusColor(remainingTime.totalMinutes)
-                            }
-                          ]} 
-                        />
-                      </View>
+                      {manager.alerts > 0 && (
+                        <View style={styles.alertCount}>
+                          <AlertTriangle color="#ef4444" size={16} strokeWidth={2} />
+                          <Text style={styles.alertCountText}>{manager.alerts}</Text>
+                        </View>
+                      )}
                     </View>
                   </View>
-
-                  <View style={styles.managerFooter}>
-                    <View style={styles.teamInfo}>
-                      <Users color="#6b7280" size={16} strokeWidth={2} />
-                      <Text style={styles.teamSize}>
-                        {manager.teamSize} équipiers
-                        {manager.reinforcementWorker > 0 && ` + ${manager.reinforcementWorker} renfort`}
-                      </Text>
-                    </View>
-                    {manager.alerts > 0 && (
-                      <View style={styles.alertCount}>
-                        <AlertTriangle color="#ef4444" size={16} strokeWidth={2} />
-                        <Text style={styles.alertCountText}>{manager.alerts}</Text>
-                      </View>
-                    )}
-                  </View>
-                </View>
-              );
-            })}
-          </View>
+                );
+              })}
+            </View>
+          )}
         </View>
 
         {/* Performance Chart */}
@@ -940,5 +891,24 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#ffffff',
+  },
+  loadingContainer: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 32,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#6b7280',
+    fontWeight: '500',
   },
 });

@@ -290,8 +290,16 @@ export default function ManagerHomeTab() {
         {/* Today's Tasks dynamiques */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, isDark && styles.sectionTitleDark]}>Tâches du jour</Text>
-          {tasksLoading || tasks.length === 0 ? (
+          {tasksLoading ? (
             <Text style={[{ color: '#6b7280', textAlign: 'center', marginVertical: 16 }, isDark && { color: '#a1a1aa' }]}>Chargement des tâches...</Text>
+          ) : tasks.length === 0 ? (
+            <View style={[styles.emptyTasksContainer, isDark && styles.emptyTasksContainerDark]}>
+              <Package color={isDark ? "#a1a1aa" : "#6b7280"} size={48} strokeWidth={1} />
+              <Text style={[styles.emptyTasksText, isDark && styles.emptyTasksTextDark]}>Aucune tâche planifiée</Text>
+              <Text style={[styles.emptyTasksSubtext, isDark && styles.emptyTasksSubtextDark]}>
+                Utilisez le Calculateur d'Équipe pour créer de nouvelles tâches
+              </Text>
+            </View>
           ) : (
             tasks.map((task) => (
             <View key={task.id} style={[styles.taskCard, isDark && styles.taskCardDark]}>
@@ -302,16 +310,42 @@ export default function ManagerHomeTab() {
                   </View>
                 </View>
                 <Text style={[styles.taskTime, isDark && styles.taskTimeDark]}>{task.start_time} - {task.end_time}</Text>
+                
+                {/* Détails de la tâche */}
+                <View style={styles.taskDetails}>
+                  <View style={styles.taskDetailRow}>
+                    <Package color={isDark ? "#a1a1aa" : "#6b7280"} size={16} strokeWidth={2} />
+                    <Text style={[styles.taskDetailText, isDark && styles.taskDetailTextDark]}>
+                      {task.packages} colis à traiter
+                    </Text>
+                  </View>
+                  <View style={styles.taskDetailRow}>
+                    <Users color={isDark ? "#a1a1aa" : "#6b7280"} size={16} strokeWidth={2} />
+                    <Text style={[styles.taskDetailText, isDark && styles.taskDetailTextDark]}>
+                      {task.team_size} membre{task.team_size > 1 ? 's' : ''} d'équipe
+                    </Text>
+                  </View>
+                  <View style={styles.taskDetailRow}>
+                    <Clock color={isDark ? "#a1a1aa" : "#6b7280"} size={16} strokeWidth={2} />
+                    <Text style={[styles.taskDetailText, isDark && styles.taskDetailTextDark]}>
+                      Durée estimée: {task.duration}
+                    </Text>
+                  </View>
+                </View>
+
               <View style={styles.taskProgressContainer}>
                 <View style={styles.taskProgressBar}>
-                    <View style={[styles.taskProgressFill, { width: `${task.progress || 0}%`, backgroundColor: task.is_completed ? '#10b981' : '#e5e7eb' }]} />
+                    <View style={[styles.taskProgressFill, { width: `${task.progress || 0}%`, backgroundColor: task.is_completed ? '#10b981' : '#3b82f6' }]} />
                 </View>
                 <Text style={[styles.taskProgressText, isDark && styles.taskProgressTextDark]}>{task.progress || 0}%</Text>
               </View>
-              <TouchableOpacity style={styles.finishButton} onPress={() => markTaskAsCompleted(task.id)}>
-                <Check color="#fff" size={18} />
-                <Text style={styles.finishButtonText}>Marquer comme fini</Text>
-              </TouchableOpacity>
+              
+              {!task.is_completed && (
+                <TouchableOpacity style={[styles.finishButton, isDark && styles.finishButtonDark]} onPress={() => markTaskAsCompleted(task.id)}>
+                  <Check color="#fff" size={18} />
+                  <Text style={styles.finishButtonText}>Marquer comme fini</Text>
+                </TouchableOpacity>
+              )}
             </View>
             ))
           )}
@@ -879,6 +913,7 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   finishButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#10b981', borderRadius: 8, paddingVertical: 8, paddingHorizontal: 16, marginTop: 12, alignSelf: 'flex-end' },
+  finishButtonDark: { backgroundColor: '#059669' },
   finishButtonText: { color: '#fff', fontWeight: '600', marginLeft: 8 },
   settingsButton: {
     width: 48,
@@ -893,5 +928,55 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
     marginRight: 12,
+  },
+  emptyTasksContainer: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 32,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  emptyTasksContainerDark: {
+    backgroundColor: '#27272a',
+  },
+  emptyTasksText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1a1a1a',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyTasksTextDark: {
+    color: '#ffffff',
+  },
+  emptyTasksSubtext: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+  },
+  emptyTasksSubtextDark: {
+    color: '#a1a1aa',
+  },
+  taskDetails: {
+    marginTop: 12,
+    marginBottom: 16,
+    gap: 8,
+  },
+  taskDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  taskDetailText: {
+    fontSize: 14,
+    color: '#6b7280',
+    fontWeight: '500',
+  },
+  taskDetailTextDark: {
+    color: '#a1a1aa',
   },
 });

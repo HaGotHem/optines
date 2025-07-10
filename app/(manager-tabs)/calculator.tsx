@@ -762,6 +762,7 @@ export default function JobCalculatorTab() {
         manager_section: task.manager_section,
         manager_initials: task.manager_initials,
         palette_condition: task.palette_condition,
+        manager_id: managerId, // ID du manager qui créé la tâche
         team_members: task.team_members
       });
 
@@ -858,15 +859,14 @@ export default function JobCalculatorTab() {
     }
   }, [teamMembers, showEmployeeSelector]);
 
-  // Charger les tâches planifiées du jour
+  // Charger les tâches planifiées du jour depuis Supabase
   const loadTasksForSelectedDate = async () => {
     try {
-      const tasksString = await AsyncStorage.getItem('scheduledTasks');
-      const tasks = tasksString ? JSON.parse(tasksString) : [];
       const selectedDateString = selectedDate.toISOString().split('T')[0];
-      const filtered = tasks.filter((t: any) => t.date === selectedDateString);
+      const filtered = getTasksByDate(selectedDateString);
       setTasksForSelectedDate(filtered);
     } catch (e) {
+      console.error('Erreur lors du chargement des tâches:', e);
       setTasksForSelectedDate([]);
     }
   };
@@ -876,17 +876,23 @@ export default function JobCalculatorTab() {
     loadTasksForSelectedDate();
   }, [selectedDate, showTaskModal]);
 
-  // Marquer une tâche comme traitée (ici, suppression immédiate)
+  // Marquer une tâche comme traitée via Supabase
   const handleMarkTaskAsDone = async (taskId: string) => {
-    const tasksString = await AsyncStorage.getItem('scheduledTasks');
-    let tasks = tasksString ? JSON.parse(tasksString) : [];
-    tasks = tasks.filter((t: any) => t.id !== taskId);
-    await AsyncStorage.setItem('scheduledTasks', JSON.stringify(tasks));
-    calculerStatsColis();
-    loadTasksForSelectedDate();
+    try {
+      const result = await toggleTaskComplete(taskId);
+      if (result.success) {
+        console.log('✅ Tâche marquée comme terminée');
+        calculerStatsColis();
+        loadTasksForSelectedDate();
+      } else {
+        console.error('Erreur lors de la completion:', result.error);
+      }
+    } catch (error) {
+      console.error('Erreur lors de la completion de la tâche:', error);
+    }
   };
 
-  // Supprimer une tâche avec confirmation
+  // Supprimer une tâche avec confirmation via Supabase
   const handleDeleteTask = (taskId: string) => {
     Alert.alert(
       "Supprimer la tâche",
@@ -894,12 +900,18 @@ export default function JobCalculatorTab() {
       [
         { text: "Annuler", style: "cancel" },
         { text: "Supprimer", style: "destructive", onPress: async () => {
-          const tasksString = await AsyncStorage.getItem('scheduledTasks');
-          let tasks = tasksString ? JSON.parse(tasksString) : [];
-          tasks = tasks.filter((t: any) => t.id !== taskId);
-          await AsyncStorage.setItem('scheduledTasks', JSON.stringify(tasks));
-          calculerStatsColis();
-          loadTasksForSelectedDate();
+          try {
+            const result = await deleteTask(taskId);
+            if (result.success) {
+              console.log('✅ Tâche supprimée');
+              calculerStatsColis();
+              loadTasksForSelectedDate();
+            } else {
+              console.error('Erreur lors de la suppression:', result.error);
+            }
+          } catch (error) {
+            console.error('Erreur lors de la suppression de la tâche:', error);
+          }
         }}
       ]
     );
