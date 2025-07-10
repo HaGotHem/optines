@@ -10,7 +10,9 @@ import {
   Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { TrendingUp, Clock, Target, Award, ChartBar as BarChart3, CircleCheck as CheckCircle, TriangleAlert as AlertTriangle, Package, Users, FileText, X } from 'lucide-react-native';
+import { TrendingUp, Clock, Target, Award, ChartBar as BarChart3, CircleCheck as CheckCircle, TriangleAlert as AlertTriangle, Package, Users, FileText, X, ArrowLeft } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
+import { useTheme } from '../../contexts/ThemeContext';
 
 interface Task {
   id: number;
@@ -24,6 +26,8 @@ interface Task {
 }
 
 export default function EfficiencyTab() {
+  const router = useRouter();
+  const { isDark } = useTheme();
   const [showReportModal, setShowReportModal] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([
     {
@@ -147,13 +151,16 @@ export default function EfficiencyTab() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <ArrowLeft color={isDark ? "#f4f4f5" : "#3b82f6"} size={28} strokeWidth={2} />
+          </TouchableOpacity>
           <TrendingUp color="#3b82f6" size={32} strokeWidth={2} />
-          <Text style={styles.title}>Performance Rayon</Text>
-          <Text style={styles.subtitle}>Analysez l'efficacité de votre équipe</Text>
+          <Text style={[styles.title, isDark && styles.titleDark]}>Performance Rayon</Text>
+          <Text style={[styles.subtitle, isDark && styles.subtitleDark]}>Analysez l'efficacité de votre équipe</Text>
         </View>
 
         {/* Metrics Grid */}
@@ -370,6 +377,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F5F5F5',
   },
+  containerDark: {
+    backgroundColor: '#18181b',
+  },
   scrollView: {
     flex: 1,
   },
@@ -378,6 +388,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 80,
     paddingBottom: 32,
+    position: 'relative',
+  },
+  backButton: {
+    position: 'absolute',
+    left: 24,
+    top: 20,
+    zIndex: 10,
+    backgroundColor: '#e0e7ff',
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#3b82f6',
+    padding: 4,
+  },
+  backButtonText: {
+    color: '#f4f4f5',
+    fontSize: 16,
+    fontWeight: '600',
   },
   title: {
     fontSize: 28,
@@ -386,10 +413,16 @@ const styles = StyleSheet.create({
     marginTop: 16,
     marginBottom: 8,
   },
+  titleDark: {
+    color: '#f4f4f5',
+  },
   subtitle: {
     fontSize: 16,
     color: '#6b7280',
     textAlign: 'center',
+  },
+  subtitleDark: {
+    color: '#a1a1aa',
   },
   metricsGrid: {
     flexDirection: 'row',

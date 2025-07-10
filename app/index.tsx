@@ -9,7 +9,7 @@ import {
   SafeAreaView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { UserCheck, Shield } from 'lucide-react-native';
+import { UserCheck, Shield, Settings } from 'lucide-react-native';
 import { router } from 'expo-router';
 
 const { width, height } = Dimensions.get('window');
@@ -23,6 +23,11 @@ export default function LoginScreen() {
   const handleManagerPress = () => {
     console.log('Manager selected');
     router.push('/login?userType=manager');
+  };
+
+  const handleDeveloperPress = () => {
+    console.log('Developer panel');
+    router.push('/developer');
   };
 
   return (
@@ -81,6 +86,18 @@ export default function LoginScreen() {
             </Text>
             <View style={[styles.cardAccent, styles.managerAccent]} />
           </LinearGradient>
+        </TouchableOpacity>
+      </View>
+
+      {/* Developer Button */}
+      <View style={styles.developerContainer}>
+        <TouchableOpacity
+          style={styles.developerButton}
+          onPress={handleDeveloperPress}
+          activeOpacity={0.8}
+        >
+          <Settings color="#6b7280" size={16} />
+          <Text style={styles.developerText}>Panel Développeur</Text>
         </TouchableOpacity>
       </View>
 
@@ -203,5 +220,26 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     textAlign: 'center',
     lineHeight: 18,
+  },
+  developerContainer: {
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  developerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  developerText: {
+    marginLeft: 8,
+    fontSize: 14,
+    color: '#6b7280',
+    fontWeight: '500',
   },
 });

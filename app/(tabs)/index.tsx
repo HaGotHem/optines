@@ -22,9 +22,11 @@ import {
 } from 'lucide-react-native';
 import FutureTasksCalendar from '../../components/FutureTasksCalendar';
 import { useTaskStats } from '../../hooks/useTaskStats';
+import { useTheme } from '../../contexts/ThemeContext';
 
 export default function HomeTab() {
   const { stats, loading, refreshStats } = useTaskStats();
+  const { isDark } = useTheme();
 
   // Rafraîchir les stats quand la page devient active
   useEffect(() => {
@@ -36,23 +38,23 @@ export default function HomeTab() {
   }, []);
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+    <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
+      <ScrollView style={styles.scrollView} contentContainerStyle={{flexGrow:1}} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.greeting}>Bonjour,</Text>
-            <Text style={styles.userName}>Directeur</Text>
+            <Text style={[styles.greeting, isDark && styles.greetingDark]}>Bonjour,</Text>
+            <Text style={[styles.userName, isDark && styles.userNameDark]}>Directeur</Text>
           </View>
           <View style={styles.headerButtons}>
             <TouchableOpacity 
-              style={styles.refreshButton}
+              style={[styles.refreshButton, isDark && styles.refreshButtonDark]}
               onPress={refreshStats}
             >
-              <Clock color="#6b7280" size={20} strokeWidth={2} />
+              <Clock color={isDark ? "#a1a1aa" : "#6b7280"} size={20} strokeWidth={2} />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.notificationButton}>
-              <Bell color="#6b7280" size={24} strokeWidth={2} />
+            <TouchableOpacity style={[styles.notificationButton, isDark && styles.notificationButtonDark]}>
+              <Bell color={isDark ? "#a1a1aa" : "#6b7280"} size={24} strokeWidth={2} />
             </TouchableOpacity>
           </View>
         </View>
@@ -146,64 +148,44 @@ export default function HomeTab() {
           </LinearGradient>
         </View>
 
-        {/* Debug Section */}
-        <View style={styles.debugSection}>
-          <Text style={styles.debugTitle}>🔍 DEBUG - État des données</Text>
-          <Text style={styles.debugText}>
-            Tâches trouvées: {stats.totalTasks} | Colis: {stats.totalPackages} | Équipes: {stats.totalTeamMembers}
-          </Text>
-          <TouchableOpacity 
-            style={styles.debugButton}
-            onPress={async () => {
-              try {
-                const tasksString = await AsyncStorage.getItem('scheduledTasks');
-                alert(`Données dans le stockage: ${tasksString || 'AUCUNE DONNÉE'}`);
-                console.log('DEBUG - Tasks:', tasksString);
-              } catch (error) {
-                alert('Erreur: ' + error);
-              }
-            }}
-          >
-            <Text style={styles.debugButtonText}>🔍 VÉRIFIER LE STOCKAGE</Text>
-          </TouchableOpacity>
-        </View>
+
 
         {/* Quick Actions */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Actions rapides</Text>
+          <Text style={[styles.sectionTitle, isDark && styles.sectionTitleDark]}>Actions rapides</Text>
           
-          <TouchableOpacity style={styles.actionCard}>
+          <TouchableOpacity style={[styles.actionCard, isDark && styles.actionCardDark]}>
             <View style={styles.actionContent}>
-              <View style={styles.actionIcon}>
+              <View style={[styles.actionIcon, isDark && styles.actionIconDark]}>
                 <Calendar color="#3b82f6" size={20} strokeWidth={2} />
               </View>
               <View style={styles.actionText}>
-                <Text style={styles.actionTitle}>Planifier une réunion</Text>
-                <Text style={styles.actionSubtitle}>Organiser avec l'équipe</Text>
+                <Text style={[styles.actionTitle, isDark && styles.actionTitleDark]}>Planifier une réunion</Text>
+                <Text style={[styles.actionSubtitle, isDark && styles.actionSubtitleDark]}>Organiser avec l'équipe</Text>
               </View>
             </View>
-            <ChevronRight color="#6b7280" size={20} strokeWidth={2} />
+            <ChevronRight color={isDark ? "#a1a1aa" : "#6b7280"} size={20} strokeWidth={2} />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.actionCard}>
+          <TouchableOpacity style={[styles.actionCard, isDark && styles.actionCardDark]}>
             <View style={styles.actionContent}>
-              <View style={styles.actionIcon}>
+              <View style={[styles.actionIcon, isDark && styles.actionIconDark]}>
                 <Users color="#10b981" size={20} strokeWidth={2} />
               </View>
               <View style={styles.actionText}>
-                <Text style={styles.actionTitle}>Gérer l'équipe</Text>
-                <Text style={styles.actionSubtitle}>Voir les performances</Text>
+                <Text style={[styles.actionTitle, isDark && styles.actionTitleDark]}>Gérer l'équipe</Text>
+                <Text style={[styles.actionSubtitle, isDark && styles.actionSubtitleDark]}>Voir les performances</Text>
               </View>
             </View>
-            <ChevronRight color="#6b7280" size={20} strokeWidth={2} />
+            <ChevronRight color={isDark ? "#a1a1aa" : "#6b7280"} size={20} strokeWidth={2} />
           </TouchableOpacity>
         </View>
 
         {/* Tâches à venir */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Tâches à venir</Text>
-          <Text style={styles.sectionSubtitle}>Planifiez vos tâches pour les semaines et mois à venir</Text>
-          <View style={styles.calendarContainer}>
+          <Text style={[styles.sectionTitle, isDark && styles.sectionTitleDark]}>Tâches à venir</Text>
+          <Text style={[styles.sectionSubtitle, isDark && styles.sectionSubtitleDark]}>Planifiez vos tâches pour les semaines et mois à venir</Text>
+          <View style={[styles.calendarContainer, isDark && styles.calendarContainerDark]}>
             <FutureTasksCalendar />
           </View>
         </View>
@@ -216,6 +198,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F5F5F5',
+  },
+  containerDark: {
+    backgroundColor: '#18181b',
   },
   scrollView: {
     flex: 1,
@@ -233,11 +218,17 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     fontWeight: '400',
   },
+  greetingDark: {
+    color: '#a1a1aa',
+  },
   userName: {
     fontSize: 28,
     fontWeight: '700',
     color: '#1a1a1a',
     marginTop: 4,
+  },
+  userNameDark: {
+    color: '#ffffff',
   },
   headerButtons: {
     flexDirection: 'row',
@@ -260,6 +251,9 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  refreshButtonDark: {
+    backgroundColor: '#27272a',
+  },
   notificationButton: {
     width: 48,
     height: 48,
@@ -275,6 +269,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 4,
     elevation: 3,
+  },
+  notificationButtonDark: {
+    backgroundColor: '#27272a',
   },
   statsContainer: {
     flexDirection: 'row',
@@ -311,40 +308,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 2,
   },
-  debugSection: {
-    backgroundColor: '#fef3c7',
-    marginHorizontal: 24,
-    marginBottom: 24,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#f59e0b',
-  },
-  debugTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#92400e',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  debugText: {
-    fontSize: 14,
-    color: '#92400e',
-    textAlign: 'center',
-    marginBottom: 12,
-  },
-  debugButton: {
-    backgroundColor: '#ef4444',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignSelf: 'center',
-  },
-  debugButtonText: {
-    fontSize: 14,
-    color: '#ffffff',
-    fontWeight: '700',
-  },
+
   section: {
     paddingHorizontal: 24,
   },
@@ -354,10 +318,16 @@ const styles = StyleSheet.create({
     color: '#1a1a1a',
     marginBottom: 16,
   },
+  sectionTitleDark: {
+    color: '#ffffff',
+  },
   sectionSubtitle: {
     fontSize: 14,
     color: '#6b7280',
     marginBottom: 16,
+  },
+  sectionSubtitleDark: {
+    color: '#a1a1aa',
   },
   calendarContainer: {
     height: 500,
@@ -371,6 +341,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 3,
     elevation: 2,
+  },
+  calendarContainerDark: {
+    backgroundColor: '#27272a',
   },
   actionCard: {
     backgroundColor: '#ffffff',
@@ -389,6 +362,9 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 2,
   },
+  actionCardDark: {
+    backgroundColor: '#27272a',
+  },
   actionContent: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -403,6 +379,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 16,
   },
+  actionIconDark: {
+    backgroundColor: '#3f3f46',
+  },
   actionText: {
     flex: 1,
   },
@@ -412,9 +391,15 @@ const styles = StyleSheet.create({
     color: '#1a1a1a',
     marginBottom: 4,
   },
+  actionTitleDark: {
+    color: '#ffffff',
+  },
   actionSubtitle: {
     fontSize: 14,
     color: '#6b7280',
     fontWeight: '400',
+  },
+  actionSubtitleDark: {
+    color: '#a1a1aa',
   },
 });

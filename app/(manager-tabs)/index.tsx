@@ -11,39 +11,57 @@ import {
   Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { TrendingUp, Users, Calendar, Calculator, Clock, CircleCheck as CheckCircle, TriangleAlert as AlertTriangle, Package, Target, Bell, X, Check } from 'lucide-react-native';
+import { TrendingUp, Users, Calendar, Calculator, Clock, CircleCheck as CheckCircle, TriangleAlert as AlertTriangle, Package, Target, Bell, X, Check, Settings } from 'lucide-react-native';
 import { router } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSupabaseTasks } from '../../hooks/useSupabaseTasks';
+import { useSupabaseAuth } from '../../hooks/useSupabaseAuth';
+import { useTheme } from '../../contexts/ThemeContext';
+import { useNotifications } from '../../hooks/useNotifications';
 
 const { width } = Dimensions.get('window');
 
 export default function ManagerHomeTab() {
   const [showNotificationModal, setShowNotificationModal] = useState(false);
-  const [notifications] = useState([
-    {
-      id: 1,
-      title: 'Livraison en retard',
-      message: 'La livraison de fruits & légumes a 30 minutes de retard',
-      time: '10 min',
-      type: 'warning'
-    },
-    {
-      id: 2,
-      title: 'Objectif atteint',
-      message: 'Votre équipe a traité 120% de l\'objectif quotidien',
-      time: '1h',
-      type: 'success'
-    },
-    {
-      id: 3,
-      title: 'Pause équipe',
-      message: 'Pause de 15 minutes dans 5 minutes',
-      time: '2h',
-      type: 'info'
-    }
-  ]);
+  // Plus besoin de la fausse liste notifications
+  // const [notifications] = useState([
+  //   {
+  //     id: 1,
+  //     title: 'Livraison en retard',
+  //     message: 'La livraison de fruits & légumes a 30 minutes de retard',
+  //     time: '10 min',
+  //     type: 'warning'
+  //   },
+  //   {
+  //     id: 2,
+  //     title: 'Objectif atteint',
+  //     message: 'Votre équipe a traité 120% de l\'objectif quotidien',
+  //     time: '1h',
+  //     type: 'success'
+  //   },
+  //   {
+  //     id: 3,
+  //     title: 'Pause équipe',
+  //     message: 'Pause de 15 minutes dans 5 minutes',
+  //     time: '2h',
+  //     type: 'info'
+  //   }
+  // ]);
 
-  // --- Ajout pour stats dynamiques ---
+  // Hooks Supabase
+  const { user } = useSupabaseAuth();
+  const today = new Date().toISOString().split('T')[0];
+  const { 
+    tasks, 
+    isLoading: tasksLoading, 
+    getLocalStats, 
+    getTasksByDate,
+    completeTask 
+  } = useSupabaseTasks({ 
+    date: today,
+    managerId: user?.id 
+  });
+
+  // --- Stats dynamiques avec Supabase ---
   const [stats, setStats] = useState({
     treatedPackages: 0,
     activeTeamMembers: 0,
@@ -53,74 +71,54 @@ export default function ManagerHomeTab() {
     totalTasks: 0,
   });
   const [loadingStats, setLoadingStats] = useState(true);
-  const [refreshFlag, setRefreshFlag] = useState(false);
-  const [todayPlannedTasks, setTodayPlannedTasks] = useState([]);
-  const [treatedPackagesToday, setTreatedPackagesToday] = useState(0);
-  const [todayDate, setTodayDate] = useState(new Date().toISOString().split('T')[0]);
 
-  // Charger les tâches du jour depuis AsyncStorage
+  // Calculer les statistiques depuis Supabase
   useEffect(() => {
-    const loadTodayTasks = async () => {
-      const tasksString = await AsyncStorage.getItem('scheduledTasks');
-      const tasks = tasksString ? JSON.parse(tasksString) : [];
-      const today = new Date().toISOString().split('T')[0];
-      const todayTasks = tasks.filter((t) => t.date === today && !(t.isCompleted || t.status === 'completed'));
-      setTodayPlannedTasks(todayTasks);
-    };
-    loadTodayTasks();
-  }, [refreshFlag]);
-
-  // Charger le compteur de colis traités du jour
-  useEffect(() => {
-    const loadTreatedPackages = async () => {
-      const today = new Date().toISOString().split('T')[0];
-      setTodayDate(today);
-      const stored = await AsyncStorage.getItem('treatedPackages_' + today);
-      setTreatedPackagesToday(stored ? parseInt(stored, 10) : 0);
-    };
-    loadTreatedPackages();
-  }, [refreshFlag]);
-
-  useEffect(() => {
-    const loadStats = async () => {
+    const calculateStats = () => {
       setLoadingStats(true);
       try {
-        const tasksString = await AsyncStorage.getItem('scheduledTasks');
-        const tasks = tasksString ? JSON.parse(tasksString) : [];
-        const today = new Date().toISOString().split('T')[0];
-        const todayTasks = tasks.filter((t) => t.date === today);
-        const treatedTasks = todayTasks.filter((t) => t.isCompleted || t.status === 'completed');
-        // const treatedPackages = treatedTasks.reduce((sum, t) => sum + (t.packages || 0), 0);
-        const activeTeamMembers = todayTasks.filter((t) => !(t.isCompleted || t.status === 'completed')).reduce((sum, t) => sum + (t.teamSize || 0), 0);
+        const todayTasks = getTasksByDate(today);
+        const completedTasks = todayTasks.filter(t => t.is_completed);
+        const pendingTasks = todayTasks.filter(t => !t.is_completed);
+        
+        // Calculer les colis traités
+        const treatedPackages = completedTasks.reduce((sum, t) => sum + (t.packages || 0), 0);
+        
+        // Calculer les membres d'équipe actifs
+        const activeTeamMembers = pendingTasks.reduce((sum, t) => sum + (t.team_size || 0), 0);
+        
+        // Calculer le temps restant
         let totalMinutes = 0;
         const now = new Date();
         todayTasks.forEach((t) => {
-          const [startHour, startMin] = (t.startTime || '00:00').split(':').map(Number);
-          const [endHour, endMin] = (t.endTime || '00:00').split(':').map(Number);
-          const start = new Date(t.date + 'T' + t.startTime);
-          const end = new Date(t.date + 'T' + t.endTime);
+          const start = new Date(`${t.date}T${t.start_time}`);
+          const end = new Date(`${t.date}T${t.end_time}`);
           if (now < start) {
-            totalMinutes += Math.max(0, (end - start) / 60000);
+            totalMinutes += Math.max(0, (end.getTime() - start.getTime()) / 60000);
           } else if (now >= start && now < end) {
-            totalMinutes += Math.max(0, (end - now) / 60000);
+            totalMinutes += Math.max(0, (end.getTime() - now.getTime()) / 60000);
           }
         });
+        
         const hours = Math.floor(totalMinutes / 60);
         const mins = Math.round(totalMinutes % 60);
         const remainingTime = `${hours}h${mins.toString().padStart(2, '0')}`;
+        
         const totalTasks = todayTasks.length;
-        const performance = totalTasks > 0 ? Math.round((treatedTasks.length / totalTasks) * 100) : 0;
+        const performance = totalTasks > 0 ? Math.round((completedTasks.length / totalTasks) * 100) : 0;
+        
         setStats({
-          treatedPackages: treatedPackagesToday,
+          treatedPackages,
           activeTeamMembers,
           remainingTime,
           performance,
-          treatedTasks: treatedTasks.length,
+          treatedTasks: completedTasks.length,
           totalTasks,
         });
       } catch (e) {
+        console.error('Erreur calcul stats:', e);
         setStats({
-          treatedPackages: treatedPackagesToday,
+          treatedPackages: 0,
           activeTeamMembers: 0,
           remainingTime: '0h00',
           performance: 0,
@@ -131,22 +129,11 @@ export default function ManagerHomeTab() {
         setLoadingStats(false);
       }
     };
-    loadStats();
-  }, [refreshFlag, treatedPackagesToday]);
 
-  // Remise à zéro automatique du compteur chaque jour
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      const now = new Date().toISOString().split('T')[0];
-      if (now !== todayDate) {
-        await AsyncStorage.setItem('treatedPackages_' + now, '0');
-        setTreatedPackagesToday(0);
-        setTodayDate(now);
-        setRefreshFlag((f) => !f);
-      }
-    }, 60000); // vérifie chaque minute
-    return () => clearInterval(interval);
-  }, [todayDate]);
+    if (!tasksLoading) {
+      calculateStats();
+    }
+  }, []);
 
   const todayTasks = [
     {
@@ -188,6 +175,10 @@ export default function ManagerHomeTab() {
     router.push('/(manager-tabs)/team');
   };
 
+  const navigateToSettings = () => {
+    router.push('/(manager-tabs)/settings');
+  };
+
   const getNotificationIcon = (type: string) => {
     switch (type) {
       case 'warning': return '⚠️';
@@ -198,66 +189,51 @@ export default function ManagerHomeTab() {
   };
 
   const markNotificationRead = (notificationId: number) => {
-    Alert.alert('Notification', 'Notification marquée comme lue');
+    // Logique pour marquer une notification comme lue
+    console.log('Notification marquée comme lue:', notificationId);
   };
 
-  // Fonction pour marquer une tâche comme terminée
-  const markTaskAsCompleted = async (taskId) => {
-    const tasksString = await AsyncStorage.getItem('scheduledTasks');
-    let tasks = tasksString ? JSON.parse(tasksString) : [];
-    let updated = false;
-    let addedPackages = 0;
-    let taskAlreadyCompleted = false;
-    tasks = tasks.map((t) => {
-      if (t.id === taskId) {
-        if (t.isCompleted || t.status === 'completed') {
-          taskAlreadyCompleted = true;
-          return t;
-        }
-        updated = true;
-        addedPackages = t.packages || 0;
-        return { ...t, isCompleted: true, status: 'completed' };
+  const markTaskAsCompleted = async (taskId: string) => {
+    try {
+      const result = await completeTask(taskId);
+      if (result.success) {
+        Alert.alert('Succès', 'Tâche marquée comme terminée');
+      } else {
+        Alert.alert('Erreur', result.error || 'Erreur lors de la mise à jour');
       }
-      return t;
-    });
-    await AsyncStorage.setItem('scheduledTasks', JSON.stringify(tasks));
-    // Incrémenter le compteur de colis traités du jour si la tâche vient d'être terminée et n'a pas déjà été comptée
-    if (updated && addedPackages > 0 && !taskAlreadyCompleted) {
-      const today = new Date().toISOString().split('T')[0];
-      const key = 'treatedPackages_' + today;
-      const stored = await AsyncStorage.getItem(key);
-      const current = stored ? parseInt(stored, 10) : 0;
-      const newValue = current + addedPackages;
-      await AsyncStorage.setItem(key, String(newValue));
-      setTreatedPackagesToday(newValue);
-    } else {
-      // Recharge le compteur même si rien n'a été ajouté pour garantir l'affichage
-      const today = new Date().toISOString().split('T')[0];
-      const key = 'treatedPackages_' + today;
-      const stored = await AsyncStorage.getItem(key);
-      setTreatedPackagesToday(stored ? parseInt(stored, 10) : 0);
+    } catch (error) {
+      Alert.alert('Erreur', 'Erreur lors de la mise à jour de la tâche');
     }
-    setRefreshFlag((f) => !f);
   };
+
+  const { isDark } = useTheme();
+  const {
+    notificationsHistory,
+    markNotificationRead: markNotificationReadHistory,
+    clearNotificationsHistory,
+  } = useNotifications();
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={styles.header}>
+          <TouchableOpacity style={styles.settingsButton} onPress={navigateToSettings}>
+            <Settings color={isDark ? "#60a5fa" : "#3b82f6"} size={28} strokeWidth={2} />
+          </TouchableOpacity>
           <View style={styles.headerContent}>
-            <Text style={styles.greeting}>Bonjour,</Text>
-            <Text style={styles.userName}>Manager Rayon</Text>
-            <Text style={styles.date}>Aujourd'hui - {new Date().toLocaleDateString('fr-FR')}</Text>
+            <Text style={[styles.greeting, isDark && styles.greetingDark]}>Bonjour,</Text>
+            <Text style={[styles.userName, isDark && styles.userNameDark]}>Manager Rayon</Text>
+            <Text style={[styles.date, isDark && styles.dateDark]}>Aujourd'hui - {new Date().toLocaleDateString('fr-FR')}</Text>
           </View>
           <TouchableOpacity 
-            style={styles.notificationButton}
+            style={[styles.notificationButton, isDark && styles.notificationButtonDark]}
             onPress={() => setShowNotificationModal(true)}
           >
-            <Bell color="#6b7280" size={24} strokeWidth={2} />
-            {notifications.length > 0 && (
+            <Bell color={isDark ? "#a1a1aa" : "#6b7280"} size={24} strokeWidth={2} />
+            {notificationsHistory.length > 0 && (
               <View style={styles.notificationBadge}>
-                <Text style={styles.notificationBadgeText}>{notifications.length}</Text>
+                <Text style={styles.notificationBadgeText}>{notificationsHistory.filter(n => !n.read).length}</Text>
               </View>
             )}
           </TouchableOpacity>
@@ -265,9 +241,9 @@ export default function ManagerHomeTab() {
 
         {/* Quick Stats dynamiques */}
         <View style={styles.statsContainer}>
-          <TouchableOpacity style={styles.statCard}>
+          <TouchableOpacity style={[styles.statCard, isDark && styles.statCardDark]}>
             <View style={[styles.statIcon, { backgroundColor: '#3b82f620' }]}> <Package color="#3b82f6" size={20} strokeWidth={2} /> </View>
-            <Text style={styles.statValue}>{loadingStats ? '...' : stats.treatedPackages}</Text>
+            <Text style={styles.statValue}>{loadingStats ? '...' : stats.treatedPackages || 0}</Text>
             <Text style={styles.statLabel}>Colis traités</Text>
             <View style={styles.progressContainer}>
               <View style={styles.progressBar}>
@@ -276,21 +252,21 @@ export default function ManagerHomeTab() {
               <Text style={styles.progressText}>{stats.totalTasks > 0 ? Math.round((stats.treatedTasks / stats.totalTasks) * 100) : 0}%</Text>
             </View>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.statCard}>
+          <TouchableOpacity style={[styles.statCard, isDark && styles.statCardDark]}>
             <View style={[styles.statIcon, { backgroundColor: '#10b98120' }]}> <Users color="#10b981" size={20} strokeWidth={2} /> </View>
-            <Text style={styles.statValue}>{loadingStats ? '...' : stats.activeTeamMembers}</Text>
-            <Text style={styles.statLabel}>Équipiers actifs</Text>
+            <Text style={[styles.statValue, isDark && styles.statValueDark]}>{loadingStats ? '...' : stats.activeTeamMembers || 0}</Text>
+            <Text style={[styles.statLabel, isDark && styles.statLabelDark]}>Équipiers actifs</Text>
             <View style={styles.progressContainer}>
               <View style={styles.progressBar}>
-                <View style={[styles.progressFill, { width: stats.totalTasks > 0 ? `${Math.round((stats.activeTeamMembers / (stats.totalTasks * 2)) * 100)}` + '%' : '0%', backgroundColor: '#10b981' }]} />
+                <View style={[styles.progressFill, { width: stats.totalTasks > 0 ? `${Math.round((stats.activeTeamMembers / (stats.totalTasks * 2)) * 100)}%` : '0%', backgroundColor: '#10b981' }]} />
               </View>
               <Text style={styles.progressText}>{stats.totalTasks > 0 ? Math.round((stats.activeTeamMembers / (stats.totalTasks * 2)) * 100) : 0}%</Text>
             </View>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.statCard}>
+          <TouchableOpacity style={[styles.statCard, isDark && styles.statCardDark]}>
             <View style={[styles.statIcon, { backgroundColor: '#f59e0b20' }]}> <Clock color="#f59e0b" size={20} strokeWidth={2} /> </View>
-            <Text style={styles.statValue}>{loadingStats ? '...' : stats.remainingTime}</Text>
-            <Text style={styles.statLabel}>Temps restant</Text>
+            <Text style={[styles.statValue, isDark && styles.statValueDark]}>{loadingStats ? '...' : stats.remainingTime || '0h00'}</Text>
+            <Text style={[styles.statLabel, isDark && styles.statLabelDark]}>Temps restant</Text>
             <View style={styles.progressContainer}>
               <View style={styles.progressBar}>
                 <View style={[styles.progressFill, { width: stats.totalTasks > 0 ? `${100 - stats.performance}%` : '0%', backgroundColor: '#f59e0b' }]} />
@@ -298,52 +274,52 @@ export default function ManagerHomeTab() {
               <Text style={styles.progressText}>{stats.totalTasks > 0 ? 100 - stats.performance : 0}%</Text>
             </View>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.statCard}>
+          <TouchableOpacity style={[styles.statCard, isDark && styles.statCardDark]}>
             <View style={[styles.statIcon, { backgroundColor: '#8b5cf620' }]}> <Target color="#8b5cf6" size={20} strokeWidth={2} /> </View>
-            <Text style={styles.statValue}>{loadingStats ? '...' : stats.performance + '%'}</Text>
-            <Text style={styles.statLabel}>Performance</Text>
+            <Text style={[styles.statValue, isDark && styles.statValueDark]}>{loadingStats ? '...' : `${stats.performance || 0}%`}</Text>
+            <Text style={[styles.statLabel, isDark && styles.statLabelDark]}>Performance</Text>
             <View style={styles.progressContainer}>
               <View style={styles.progressBar}>
-                <View style={[styles.progressFill, { width: `${stats.performance}%`, backgroundColor: '#8b5cf6' }]} />
+                <View style={[styles.progressFill, { width: `${stats.performance || 0}%`, backgroundColor: '#8b5cf6' }]} />
               </View>
-              <Text style={styles.progressText}>{stats.performance}%</Text>
+              <Text style={styles.progressText}>{stats.performance || 0}%</Text>
             </View>
           </TouchableOpacity>
         </View>
 
         {/* Today's Tasks dynamiques */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Tâches du jour</Text>
-          {todayPlannedTasks.length === 0 && (
-            <Text style={{ color: '#6b7280', textAlign: 'center', marginVertical: 16 }}>Aucune tâche planifiée à terminer.</Text>
-          )}
-          {todayPlannedTasks.map((task) => (
-            <View key={task.id} style={styles.taskCard}>
+          <Text style={[styles.sectionTitle, isDark && styles.sectionTitleDark]}>Tâches du jour</Text>
+          {tasksLoading || tasks.length === 0 ? (
+            <Text style={[{ color: '#6b7280', textAlign: 'center', marginVertical: 16 }, isDark && { color: '#a1a1aa' }]}>Chargement des tâches...</Text>
+          ) : (
+            tasks.map((task) => (
+            <View key={task.id} style={[styles.taskCard, isDark && styles.taskCardDark]}>
               <View style={styles.taskHeader}>
-                <Text style={styles.taskTitle}>{task.title}</Text>
+                <Text style={[styles.taskTitle, isDark && styles.taskTitleDark]}>{task.title}</Text>
                 <View style={styles.taskStatus}>
-                  {task.status === 'in-progress' && <Clock color="#f59e0b" size={20} strokeWidth={2} />}
-                  {task.status === 'pending' && <Clock color="#6b7280" size={20} strokeWidth={2} />}
+                    {task.is_completed ? <CheckCircle color="#10b981" size={20} strokeWidth={2} /> : <Clock color="#6b7280" size={20} strokeWidth={2} />}
+                  </View>
                 </View>
-              </View>
-              <Text style={styles.taskTime}>{task.startTime} - {task.endTime}</Text>
+                <Text style={[styles.taskTime, isDark && styles.taskTimeDark]}>{task.start_time} - {task.end_time}</Text>
               <View style={styles.taskProgressContainer}>
                 <View style={styles.taskProgressBar}>
-                  <View style={[styles.taskProgressFill, { width: `${task.progress || 0}%`, backgroundColor: task.status === 'in-progress' ? '#3b82f6' : '#e5e7eb' }]} />
+                    <View style={[styles.taskProgressFill, { width: `${task.progress || 0}%`, backgroundColor: task.is_completed ? '#10b981' : '#e5e7eb' }]} />
                 </View>
-                <Text style={styles.taskProgressText}>{task.progress || 0}%</Text>
+                <Text style={[styles.taskProgressText, isDark && styles.taskProgressTextDark]}>{task.progress || 0}%</Text>
               </View>
               <TouchableOpacity style={styles.finishButton} onPress={() => markTaskAsCompleted(task.id)}>
                 <Check color="#fff" size={18} />
                 <Text style={styles.finishButtonText}>Marquer comme fini</Text>
               </TouchableOpacity>
             </View>
-          ))}
+            ))
+          )}
         </View>
 
         {/* Quick Actions */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Actions rapides</Text>
+          <Text style={[styles.sectionTitle, isDark && styles.sectionTitleDark]}>Actions rapides</Text>
           
           <TouchableOpacity style={styles.actionCard} onPress={navigateToCalculator}>
             <LinearGradient
@@ -408,25 +384,25 @@ export default function ManagerHomeTab() {
 
         {/* Alerts */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Alertes importantes</Text>
+          <Text style={[styles.sectionTitle, isDark && styles.sectionTitleDark]}>Alertes importantes</Text>
           
-          <TouchableOpacity style={styles.alertCard}>
+          <TouchableOpacity style={[styles.alertCard, isDark && styles.alertCardDark]}>
             <View style={styles.alertIcon}>
               <AlertTriangle color="#ef4444" size={20} strokeWidth={2} />
             </View>
             <View style={styles.alertContent}>
-              <Text style={styles.alertTitle}>Stock faible</Text>
-              <Text style={styles.alertText}>Pommes de terre - Réapprovisionner avant 16h</Text>
+              <Text style={[styles.alertTitle, isDark && styles.alertTitleDark]}>Stock faible</Text>
+              <Text style={[styles.alertText, isDark && styles.alertTextDark]}>Pommes de terre - Réapprovisionner avant 16h</Text>
             </View>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.alertCard}>
+          <TouchableOpacity style={[styles.alertCard, isDark && styles.alertCardDark]}>
             <View style={styles.alertIcon}>
               <Clock color="#f59e0b" size={20} strokeWidth={2} />
             </View>
             <View style={styles.alertContent}>
-              <Text style={styles.alertTitle}>Pause équipe</Text>
-              <Text style={styles.alertText}>Pause de 15 minutes dans 10 minutes</Text>
+              <Text style={[styles.alertTitle, isDark && styles.alertTitleDark]}>Pause équipe</Text>
+              <Text style={[styles.alertText, isDark && styles.alertTextDark]}>Pause de 15 minutes dans 10 minutes</Text>
             </View>
           </TouchableOpacity>
         </View>
@@ -440,41 +416,55 @@ export default function ManagerHomeTab() {
         onRequestClose={() => setShowNotificationModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, isDark && styles.modalContentDark]}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Notifications</Text>
+              <Text style={[styles.modalTitle, isDark && styles.modalTitleDark]}>Notifications</Text>
               <TouchableOpacity onPress={() => setShowNotificationModal(false)}>
-                <X color="#6b7280" size={24} strokeWidth={2} />
+                <X color={isDark ? "#a1a1aa" : "#6b7280"} size={24} strokeWidth={2} />
               </TouchableOpacity>
             </View>
-
             <ScrollView style={styles.notificationsList}>
-              {notifications.map((notification) => (
+              {notificationsHistory.length === 0 && (
+                <Text style={{ color: isDark ? '#a1a1aa' : '#6b7280', textAlign: 'center', marginTop: 24 }}>Aucune notification</Text>
+              )}
+              {notificationsHistory.map((notification) => (
                 <TouchableOpacity 
                   key={notification.id} 
-                  style={styles.notificationItem}
-                  onPress={() => markNotificationRead(notification.id)}
+                  style={[
+                    styles.notificationItem,
+                    isDark && styles.notificationItemDark,
+                    notification.read && { opacity: 0.5 }
+                  ]}
+                  onPress={() => markNotificationReadHistory(notification.id)}
                 >
                   <Text style={styles.notificationIcon}>
-                    {getNotificationIcon(notification.type)}
+                    {getNotificationIcon(notification.data?.type || 'general')}
                   </Text>
                   <View style={styles.notificationContent}>
-                    <Text style={styles.notificationTitle}>{notification.title}</Text>
-                    <Text style={styles.notificationMessage}>{notification.message}</Text>
-                    <Text style={styles.notificationTime}>Il y a {notification.time}</Text>
+                    <Text style={[
+                      styles.notificationTitle,
+                      isDark && styles.notificationTitleDark
+                    ]}>{notification.title}</Text>
+                    <Text style={[
+                      styles.notificationMessage,
+                      isDark && styles.notificationMessageDark
+                    ]}>{notification.body}</Text>
+                    <Text style={[
+                      styles.notificationTime,
+                      isDark && styles.notificationTimeDark
+                    ]}>{new Date(notification.date).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}</Text>
                   </View>
+                  {!notification.read && (
+                    <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#3b82f6', marginLeft: 8 }} />
+                  )}
                 </TouchableOpacity>
               ))}
             </ScrollView>
-
             <TouchableOpacity 
-              style={styles.markAllReadButton}
-              onPress={() => {
-                Alert.alert('Notifications', 'Toutes les notifications ont été marquées comme lues');
-                setShowNotificationModal(false);
-              }}
+              style={[styles.markAllReadButton, isDark && styles.markAllReadButtonDark]}
+              onPress={clearNotificationsHistory}
             >
-              <Text style={styles.markAllReadText}>Tout marquer comme lu</Text>
+              <Text style={[styles.markAllReadText, isDark && styles.markAllReadTextDark]}>Vider l'historique</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -487,6 +477,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F5F5F5',
+  },
+  containerDark: {
+    backgroundColor: '#18181b',
   },
   scrollView: {
     flex: 1,
@@ -507,6 +500,9 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     fontWeight: '400',
   },
+  greetingDark: {
+    color: '#a1a1aa',
+  },
   userName: {
     fontSize: 28,
     fontWeight: '700',
@@ -514,10 +510,16 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 8,
   },
+  userNameDark: {
+    color: '#ffffff',
+  },
   date: {
     fontSize: 14,
     color: '#9ca3af',
     fontWeight: '500',
+  },
+  dateDark: {
+    color: '#71717a',
   },
   notificationButton: {
     width: 48,
@@ -535,6 +537,9 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
     position: 'relative',
+  },
+  notificationButtonDark: {
+    backgroundColor: '#27272a',
   },
   notificationBadge: {
     position: 'absolute',
@@ -560,10 +565,10 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   statCard: {
-    width: '47%',
-    backgroundColor: '#ffffff',
+    flex: 1,
     borderRadius: 12,
     padding: 16,
+    backgroundColor: '#ffffff',
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -572,6 +577,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 4,
     elevation: 3,
+  },
+  statCardDark: {
+    backgroundColor: '#27272a',
   },
   statIcon: {
     width: 32,
@@ -582,16 +590,20 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   statValue: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '700',
     color: '#1a1a1a',
-    marginBottom: 4,
+  },
+  statValueDark: {
+    color: '#ffffff',
   },
   statLabel: {
     fontSize: 12,
     color: '#6b7280',
     fontWeight: '500',
-    marginBottom: 8,
+  },
+  statLabelDark: {
+    color: '#a1a1aa',
   },
   progressContainer: {
     flexDirection: 'row',
@@ -623,6 +635,9 @@ const styles = StyleSheet.create({
     color: '#1a1a1a',
     marginBottom: 16,
   },
+  sectionTitleDark: {
+    color: '#ffffff',
+  },
   taskCard: {
     backgroundColor: '#ffffff',
     borderRadius: 12,
@@ -631,11 +646,14 @@ const styles = StyleSheet.create({
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: 1,
     },
     shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  taskCardDark: {
+    backgroundColor: '#27272a',
   },
   taskHeader: {
     flexDirection: 'row',
@@ -647,7 +665,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#1a1a1a',
-    flex: 1,
+  },
+  taskTitleDark: {
+    color: '#ffffff',
   },
   taskStatus: {
     marginLeft: 12,
@@ -655,7 +675,10 @@ const styles = StyleSheet.create({
   taskTime: {
     fontSize: 14,
     color: '#6b7280',
-    marginBottom: 12,
+    marginTop: 4,
+  },
+  taskTimeDark: {
+    color: '#a1a1aa',
   },
   taskProgressContainer: {
     flexDirection: 'row',
@@ -674,9 +697,11 @@ const styles = StyleSheet.create({
   },
   taskProgressText: {
     fontSize: 12,
-    fontWeight: '600',
     color: '#1a1a1a',
-    minWidth: 35,
+    fontWeight: '600',
+  },
+  taskProgressTextDark: {
+    color: '#ffffff',
   },
   actionCard: {
     marginBottom: 16,
@@ -727,6 +752,9 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 2,
   },
+  alertCardDark: {
+    backgroundColor: '#27272a',
+  },
   alertIcon: {
     width: 40,
     height: 40,
@@ -740,26 +768,38 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   alertTitle: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
     color: '#1a1a1a',
     marginBottom: 4,
   },
+  alertTitleDark: {
+    color: '#ffffff',
+  },
   alertText: {
-    fontSize: 12,
+    fontSize: 14,
     color: '#6b7280',
+  },
+  alertTextDark: {
+    color: '#a1a1aa',
   },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalContent: {
     backgroundColor: '#ffffff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderRadius: 20,
     padding: 24,
+    minWidth: 300,
+    maxWidth: 400,
     maxHeight: '80%',
+    alignSelf: 'center',
+  },
+  modalContentDark: {
+    backgroundColor: '#27272a',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -769,19 +809,24 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#1a1a1a',
+  },
+  modalTitleDark: {
+    color: '#ffffff',
   },
   notificationsList: {
     maxHeight: 400,
   },
   notificationItem: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
     padding: 16,
-    backgroundColor: '#f8fafc',
-    borderRadius: 12,
-    marginBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+    alignItems: 'flex-start',
+  },
+  notificationItemDark: {
+    borderBottomColor: '#3f3f46',
   },
   notificationIcon: {
     fontSize: 20,
@@ -797,28 +842,56 @@ const styles = StyleSheet.create({
     color: '#1a1a1a',
     marginBottom: 4,
   },
+  notificationTitleDark: {
+    color: '#ffffff',
+  },
   notificationMessage: {
     fontSize: 14,
     color: '#6b7280',
-    lineHeight: 20,
-    marginBottom: 8,
+    marginBottom: 4,
+  },
+  notificationMessageDark: {
+    color: '#a1a1aa',
   },
   notificationTime: {
     fontSize: 12,
     color: '#9ca3af',
   },
+  notificationTimeDark: {
+    color: '#71717a',
+  },
   markAllReadButton: {
+    marginTop: 16,
     backgroundColor: '#3b82f6',
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
-    marginTop: 16,
+  },
+  markAllReadButtonDark: {
+    backgroundColor: '#2563eb',
   },
   markAllReadText: {
-    fontSize: 16,
+    color: '#ffffff',
     fontWeight: '600',
+    fontSize: 16,
+  },
+  markAllReadTextDark: {
     color: '#ffffff',
   },
   finishButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#10b981', borderRadius: 8, paddingVertical: 8, paddingHorizontal: 16, marginTop: 12, alignSelf: 'flex-end' },
-  finishButtonText: { color: '#fff', fontWeight: '600', marginLeft: 8 }
+  finishButtonText: { color: '#fff', fontWeight: '600', marginLeft: 8 },
+  settingsButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#ffffff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 3,
+    marginRight: 12,
+  },
 });

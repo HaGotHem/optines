@@ -45,7 +45,7 @@ export default function DatePickerCalendar({
         useNativeDriver: true,
       }).start();
     }
-  }, [visible]);
+  }, []);
 
   const getDaysInMonth = (date: Date) => {
     return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
@@ -243,7 +243,7 @@ export default function DatePickerCalendar({
             ))}
           </View>
 
-          <ScrollView style={styles.calendarBody} showsVerticalScrollIndicator={false}>
+          <ScrollView style={styles.calendarBody} contentContainerStyle={{flexGrow:1}} showsVerticalScrollIndicator={false}>
             <View style={styles.calendarGrid}>
               {generateCalendarDays()}
             </View>

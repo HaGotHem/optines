@@ -16,11 +16,17 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Calculator, Clock, Package, Users, Plus, Minus, TriangleAlert as AlertTriangle, Calendar, X } from 'lucide-react-native';
-import { router, useFocusEffect, useIsFocused } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useNotifications } from '../../hooks/useNotifications';
 import * as Notifications from 'expo-notifications';
 import DatePickerCalendar from '../../components/DatePickerCalendar';
 import { Swipeable } from 'react-native-gesture-handler';
+import { useTheme } from '../../contexts/ThemeContext';
+import { ArrowLeft } from 'lucide-react-native';
+import { useSupabaseAuth } from '../../hooks/useSupabaseAuth';
+import { useSupabaseTeam } from '../../hooks/useSupabaseTeam';
+import { useSupabaseTasks } from '../../hooks/useSupabaseTasks';
+import { useUserProfile } from '../../hooks/useUserProfile';
 
 interface TeamMember {
   id: number;
@@ -40,15 +46,16 @@ interface TeamMember {
 interface Task {
   id: string;
   title: string;
-  startTime: string;
-  endTime: string;
+  start_time: string;
+  end_time: string;
   duration: string;
   date: string;
   packages: number;
-  teamSize: number;
-  managerSection: string;
-  managerInitials: string;
-  teamMembers?: number[]; // IDs des membres de l'équipe
+  team_size: number;
+  manager_section: string;
+  manager_initials: string;
+  palette_condition: boolean;
+  team_members: number[]; // IDs des membres de l'équipe
 }
 
 export default function JobCalculatorTab() {
@@ -77,7 +84,6 @@ export default function JobCalculatorTab() {
 
   // États pour le menu de sélection des employés
   const [showEmployeeSelector, setShowEmployeeSelector] = useState(false);
-  const [allEmployees, setAllEmployees] = useState<TeamMember[]>([]);
   const [assignedEmployees, setAssignedEmployees] = useState<TeamMember[]>([]);
   const [assignedEmployeeIds, setAssignedEmployeeIds] = useState<number[]>([]);
 
@@ -89,188 +95,47 @@ export default function JobCalculatorTab() {
   const [availableEmployees, setAvailableEmployees] = useState(totalEmployees); // Employés réellement disponibles
   const [totalEmployeesDynamic, setTotalEmployeesDynamic] = useState(totalEmployees); // Nombre total d'employés dynamique
 
-  const isFocused = typeof useIsFocused === 'function' ? useIsFocused() : true;
   const [totalColisJour, setTotalColisJour] = useState(0);
   const [colisTraitesJour, setColisTraitesJour] = useState(0);
   const [pourcentageColisTraites, setPourcentageColisTraites] = useState(0);
 
-  const [tasksForSelectedDate, setTasksForSelectedDate] = useState([]);
+  const [tasksForSelectedDate, setTasksForSelectedDate] = useState<any[]>([]);
 
   const [showDevTools, setShowDevTools] = useState(false);
 
-  // Charger le nombre total d'employés depuis AsyncStorage
-  useEffect(() => {
-    loadTotalEmployees();
-    // Ajout : calculer les stats au chargement initial
-    calculerStatsColis();
-  }, []);
+  // TOUS LES HOOKS DOIVENT ÊTRE APPELÉS ICI, AVANT TOUS LES EARLY RETURNS
+  const { isDark } = useTheme();
+  const { user, isLoading } = useSupabaseAuth();
+  const { profile, isLoading: profileLoading } = useUserProfile();
+  
+  // Détermination robuste du managerId
+  const managerId = user?.app_metadata?.user_id?.toString() || user?.id?.toString();
 
-  // Charger tous les employés de l'équipe rayon
-  useEffect(() => {
-    loadAllEmployees();
-  }, []);
+  // Hook Supabase pour charger les employés (uniquement si managerId existe)
+  const {
+    members: allEmployees,
+    isLoading: employeesLoading
+  } = useSupabaseTeam(managerId);
 
-  const loadAllEmployees = async () => {
-    try {
-      const savedTeam = await AsyncStorage.getItem('teamMembers');
-      if (savedTeam) {
-        const employees = JSON.parse(savedTeam);
-        setAllEmployees(employees);
-      }
-    } catch (error) {
-      console.error('Error loading all employees:', error);
-    }
-  };
+  // Hook Supabase pour gérer les tâches - TOUJOURS APPELÉ
+  const {
+    tasks: supabaseTasks,
+    isLoading: tasksLoading,
+    createTask,
+    getTasksByDate
+  } = useSupabaseTasks({
+    managerId: user?.app_metadata?.user_id?.toString()
+  });
 
-  // Vérifier si un employé est déjà assigné à une tâche (occupé ou en conflit)
-  const isEmployeeAssigned = async (employeeId: number) => {
-    try {
-      const existingTasksString = await AsyncStorage.getItem('scheduledTasks');
-      const existingTasks = existingTasksString ? JSON.parse(existingTasksString) : [];
-      
-      const selectedDateString = selectedDate.toISOString().split('T')[0];
-      const tasksOnSameDate = existingTasks.filter((task: any) => task.date === selectedDateString);
-      
-      // Calculer la durée de la nouvelle tâche
-      const packageCount = parseInt(packages) || 0;
-      const baseTimeSeconds = packageCount * 40;
-      const palettePenaltySeconds = paletteCondition ? 0 : 20 * 60;
-      const additionalMembers = teamMembers.length - 1;
-      const teamBonusSeconds = additionalMembers * 30 * 60;
-      const totalTimeSeconds = Math.max(0, baseTimeSeconds + palettePenaltySeconds - teamBonusSeconds);
-      
-      const newTaskStart = selectedStartTime;
-      const newTaskEnd = calculateEndTime(selectedStartTime, totalTimeSeconds);
-      
-      console.log('Checking employee assignment:', {
-        employeeId,
-        newTaskStart,
-        newTaskEnd,
-        totalTimeSeconds,
-        tasksOnSameDate: tasksOnSameDate.length
-      });
-      
-      // Vérifier si l'employé est dans une tâche qui se chevauche
-      for (const task of tasksOnSameDate) {
-        const existingStart = task.startTime;
-        const existingEnd = task.endTime;
-        
-        const newStartMinutes = parseInt(newTaskStart.split(':')[0]) * 60 + parseInt(newTaskStart.split(':')[1]);
-        const newEndMinutes = parseInt(newTaskEnd.split(':')[0]) * 60 + parseInt(newTaskEnd.split(':')[1]);
-        const existingStartMinutes = parseInt(existingStart.split(':')[0]) * 60 + parseInt(existingStart.split(':')[1]);
-        const existingEndMinutes = parseInt(existingEnd.split(':')[0]) * 60 + parseInt(existingEnd.split(':')[1]);
-        
-        const hasConflict = (
-          (newStartMinutes >= existingStartMinutes && newStartMinutes < existingEndMinutes) ||
-          (newEndMinutes > existingStartMinutes && newEndMinutes <= existingEndMinutes) ||
-          (newStartMinutes <= existingStartMinutes && newEndMinutes >= existingEndMinutes)
-        );
-        
-        // Vérifier si l'employé est dans cette tâche
-        const isInTask = task.teamMembers && task.teamMembers.includes(employeeId);
-        
-        // Ne pas considérer les anciennes tâches sans teamMembers comme des conflits
-        // car on ne peut pas savoir qui était assigné et on veut permettre l'assignation
-        const isLegacyTask = !task.teamMembers;
-        
-        // Ne pas considérer comme conflit si c'est la même tâche (même heure de début)
-        const isSameTask = existingStart === newTaskStart;
-        
-        // Vérifier les conflits pour les tâches avec des employés explicitement assignés
-        if (hasConflict && isInTask && !isSameTask) {
-          console.log(`Employee ${employeeId} is assigned to conflicting task:`, task.title);
-          return true;
-        }
-        
-        // Vérifier si l'employé est simplement assigné à une tâche (même sans conflit temporel)
-        // pour éviter qu'il soit assigné à plusieurs tâches
-        if (isInTask && !isSameTask) {
-          console.log(`Employee ${employeeId} is already assigned to task:`, task.title);
-          return true;
-        }
-      }
-      
-      return false;
-    } catch (error) {
-      console.error('Error checking employee assignment:', error);
-      return false;
-    }
-  };
-
-  // Recharger les données quand l'utilisateur revient sur cette page
-  useFocusEffect(
-    React.useCallback(() => {
-      loadTotalEmployees();
-    }, [])
-  );
-
-  // Recharger les heures de travail quand l'utilisateur revient sur cette page
-  useFocusEffect(
-    React.useCallback(() => {
-      loadWorkingHours();
-    }, [])
-  );
-
-  // Nettoyer le formulaire quand l'utilisateur revient sur cette page
-  useFocusEffect(
-    React.useCallback(() => {
-      resetForm();
-    }, [])
-  );
-
-  // Charger les heures de travail au montage du composant
-  useEffect(() => {
-    loadWorkingHours();
-  }, []);
-
-  // Recalculer les employés disponibles quand les heures de travail changent
-  useEffect(() => {
-    calculateAvailableEmployees();
-  }, [workingHours]);
-
-  // Vérifier si l'heure sélectionnée est hors des horaires de travail
-  // Fonction supprimée : checkTimeInWorkingHours et useEffect associé
-
-  // Surveiller les changements d'heure et d'horaires de travail
-  // useEffect supprimé : checkTimeInWorkingHours
-
-  // Animation de la notification
-  // Bloc supprimé : useEffect avec showTimeWarning et notificationFadeAnim
-
+  // FONCTIONS UTILITAIRES - DOIVENT ÊTRE DÉFINIES AVANT LES USEEFFECT
   const loadTotalEmployees = async () => {
-    try {
-      const savedTeam = await AsyncStorage.getItem('teamMembers');
-      if (savedTeam) {
-        const teamMembers = JSON.parse(savedTeam);
-        setTotalEmployeesDynamic(teamMembers.length);
-      }
-    } catch (error) {
-      console.error('Error loading total employees:', error);
+    // Le nombre total d'employés est maintenant fourni par useSupabaseTeam
+    // via allEmployees.length
+    if (allEmployees && allEmployees.length > 0) {
+      setTotalEmployeesDynamic(allEmployees.length);
     }
   };
 
-  // Mettre à jour les employés disponibles quand le nombre total change
-  useEffect(() => {
-    calculateAvailableEmployees();
-  }, [totalEmployeesDynamic]);
-
-  useEffect(() => {
-    if (showDatePicker) {
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 150, // Animation très rapide de 150ms
-        useNativeDriver: true,
-      }).start();
-    } else {
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 100, // Disparition encore plus rapide de 100ms
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [showDatePicker, fadeAnim]);
-
-  // Charger les heures de travail depuis AsyncStorage
   const loadWorkingHours = async () => {
     try {
       const savedHours = await AsyncStorage.getItem('workingHours');
@@ -280,7 +145,7 @@ export default function JobCalculatorTab() {
         const newWorkingHours = JSON.parse(savedHours);
         console.log('Setting new working hours:', newWorkingHours);
         setWorkingHours(newWorkingHours);
-        
+    
         // Vérifier si l'heure sélectionnée actuellement est dans la plage des nouvelles heures de travail
         const currentStartMinutes = parseInt(selectedStartTime.split(':')[0]) * 60 + parseInt(selectedStartTime.split(':')[1]);
         const newStartMinutes = parseInt(newWorkingHours.start.split(':')[0]) * 60 + parseInt(newWorkingHours.start.split(':')[1]);
@@ -303,6 +168,195 @@ export default function JobCalculatorTab() {
       console.error('Error loading working hours:', error);
     }
   };
+
+  // Fonctions de calcul du temps - DOIVENT ÊTRE AVANT calculateAvailableEmployees
+  const calculateWorkTime = () => {
+      const packageCount = parseInt(packages) || 0;
+    
+    // Base time: 40 seconds per package
+      const baseTimeSeconds = packageCount * 40;
+    
+    // Palette condition penalty: 20 minutes if bad condition
+      const palettePenaltySeconds = paletteCondition ? 0 : 20 * 60;
+    
+    // Team efficiency: each additional member saves 30 minutes (1800 seconds)
+      const additionalMembers = teamMembers.length - 1;
+      const teamBonusSeconds = additionalMembers * 30 * 60;
+    
+    // Calculate total time
+      const totalTimeSeconds = Math.max(0, baseTimeSeconds + palettePenaltySeconds - teamBonusSeconds);
+      
+    // Convert to hours and minutes
+    const hours = Math.floor(totalTimeSeconds / 3600);
+    const minutes = Math.floor((totalTimeSeconds % 3600) / 60);
+    const seconds = totalTimeSeconds % 60;
+    
+    return {
+      baseTime: baseTimeSeconds,
+      palettePenalty: palettePenaltySeconds,
+      teamBonus: teamBonusSeconds,
+      totalTime: totalTimeSeconds,
+      hours,
+      minutes,
+      seconds,
+      formattedTime: `${hours}h ${minutes.toString().padStart(2, '0')}min ${seconds.toString().padStart(2, '0')}s`
+    };
+  };
+
+  const calculateEndTime = (startTime: string, durationSeconds: number) => {
+    const [hours, minutes] = startTime.split(':').map(Number);
+    const startDate = new Date();
+    startDate.setHours(hours, minutes, 0, 0);
+    
+    const endDate = new Date(startDate.getTime() + durationSeconds * 1000);
+    
+    // Retourner le format HH:MM pour les comparaisons
+    return endDate.toLocaleTimeString('fr-FR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+  };
+
+  const formatEndTimeForDisplay = (startTime: string, durationSeconds: number) => {
+    const [hours, minutes] = startTime.split(':').map(Number);
+    const startDate = new Date();
+    startDate.setHours(hours, minutes, 0, 0);
+    
+    const endDate = new Date(startDate.getTime() + durationSeconds * 1000);
+    
+    return endDate.toLocaleTimeString('fr-FR', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const timeCalculation = calculateWorkTime();
+
+  const calculateAvailableEmployees = async () => {
+    try {
+      const selectedDateString = selectedDate.toISOString().split('T')[0];
+      
+      // Utiliser les tâches de Supabase au lieu d'AsyncStorage
+      const tasksOnSameDate = await getTasksByDate(selectedDateString);
+      
+      // Calculer le nombre d'employés déjà assignés à des tâches
+      let assignedEmployees = 0;
+      
+      const newTaskStart = selectedStartTime;
+      const newTaskEnd = calculateEndTime(selectedStartTime, timeCalculation.totalTime);
+      
+      tasksOnSameDate.forEach((task: any) => {
+        // Pour les nouvelles tâches avec team_members, compter les employés explicitement assignés
+        if (task.team_members && task.team_members.length > 0) {
+          assignedEmployees += task.team_members.length;
+    } else {
+          // Pour les anciennes tâches sans team_members, ne pas les compter
+          console.log('Skipping legacy task without team_members:', task.title);
+        }
+      });
+      
+      // Calculer les employés disponibles
+      const available = Math.max(0, totalEmployeesDynamic - assignedEmployees);
+      console.log('Available employees calculation:', {
+        totalEmployeesDynamic,
+        assignedEmployees,
+        available,
+        tasksOnSameDate: tasksOnSameDate.length
+      });
+      
+      setAvailableEmployees(available);
+    } catch (error) {
+      console.error('Error calculating available employees:', error);
+      setAvailableEmployees(totalEmployeesDynamic);
+    }
+  };
+
+  const calculerStatsColis = async () => {
+    try {
+      console.log('🔍 CalculerStatsColis - Début du calcul');
+      const tasksString = await AsyncStorage.getItem('scheduledTasks');
+      console.log('📦 Tâches stockées:', tasksString);
+      
+      const tasks = tasksString ? JSON.parse(tasksString) : [];
+      const selectedDateString = selectedDate.toISOString().split('T')[0];
+      console.log('📅 Date sélectionnée:', selectedDateString);
+      
+      const tasksForSelectedDate = tasks.filter((t: any) => t.date === selectedDateString);
+      console.log('📋 Tâches pour la date sélectionnée:', tasksForSelectedDate);
+      
+      const total = tasksForSelectedDate.reduce((sum: number, t: any) => sum + (t.packages || 0), 0);
+      const traites = tasksForSelectedDate.reduce((sum: number, t: any) => sum + (t.packages || 0), 0);
+      
+      console.log('📊 Résultats calcul:', { total, traites, pourcentage: total > 0 ? Math.round((traites / total) * 100) : 0 });
+      
+      setTotalColisJour(total);
+      setColisTraitesJour(traites);
+      setPourcentageColisTraites(total > 0 ? Math.round((traites / total) * 100) : 0);
+    } catch (e) {
+      console.error('❌ Erreur dans calculerStatsColis:', e);
+      setTotalColisJour(0);
+      setColisTraitesJour(0);
+      setPourcentageColisTraites(0);
+    }
+  };
+
+  const resetForm = () => {
+    setPackages('');
+    setPaletteCondition(true);
+    setTeamMembers([]);
+    setSelectedStartTime('05:00');
+    setShowTaskModal(false);
+    setShowTimePicker(false);
+    setShowConflictAlert(false);
+    setConflictMessage('');
+    setShowConflictModal(false);
+    setConflictDetails(null);
+    setAllConflicts([]);
+    setPendingTask(null);
+    setShowEmployeeSelector(false);
+    setAssignedEmployees([]);
+    setAssignedEmployeeIds([]);
+    setTempSelectedHour('05');
+    setTempSelectedMinute('00');
+  };
+        
+  // TOUS LES USEEFFECT APRÈS LES FONCTIONS
+  // Debug : log du user et du managerId
+  useEffect(() => {
+    console.log('🟦 [DEBUG] Calculator - user:', user);
+    console.log('🟦 [DEBUG] Calculator - managerId:', managerId);
+  }, [user, managerId]);
+
+  // Redirection automatique si l'utilisateur n'est pas connecté
+  useEffect(() => {
+    if (isLoading) return; // Ne rien faire tant que le chargement est en cours
+    if (!user) {
+      router.replace('/login?userType=manager');
+    }
+  }, [isLoading, user]);
+
+  // Charger le nombre total d'employés depuis AsyncStorage
+  useEffect(() => {
+    loadTotalEmployees();
+    // Ajout : calculer les stats au chargement initial
+    calculerStatsColis();
+  }, []);
+
+  // Charger les heures de travail au montage du composant
+  useEffect(() => {
+    loadWorkingHours();
+  }, []);
+
+  // Recalculer les employés disponibles quand les heures de travail changent
+  useEffect(() => {
+    calculateAvailableEmployees();
+  }, [workingHours]);
+
+  // Mettre à jour les employés disponibles quand le nombre total change
+  useEffect(() => {
+    calculateAvailableEmployees();
+  }, [totalEmployeesDynamic]);
 
   // Générer les créneaux horaires selon les heures de travail
   const generateTimeSlots = () => {
@@ -355,72 +409,14 @@ export default function JobCalculatorTab() {
     return minutes;
   };
 
-  // Manager information (this would normally come from authentication)
+  // Manager information (récupérée depuis le profil utilisateur)
   const currentManager = {
-    name: 'Marie Dubois',
-    section: 'Fruits & Légumes',
-    initials: 'MD'
+    name: profile?.full_name || 'Utilisateur',
+    section: profile?.section || 'Section inconnue',
+    initials: profile?.full_name 
+      ? profile.full_name.split(' ').map(n => n[0]).join('').toUpperCase() 
+      : 'XX'
   };
-
-  // Fonction pour calculer les employés réellement disponibles
-  const calculateAvailableEmployees = async () => {
-    try {
-      const existingTasksString = await AsyncStorage.getItem('scheduledTasks');
-      const existingTasks = existingTasksString ? JSON.parse(existingTasksString) : [];
-      
-      const selectedDateString = selectedDate.toISOString().split('T')[0];
-      const tasksOnSameDate = existingTasks.filter((task: any) => task.date === selectedDateString);
-      
-      // Calculer le nombre d'employés déjà assignés à des tâches
-      let assignedEmployees = 0;
-      
-      const newTaskStart = selectedStartTime;
-      const newTaskEnd = calculateEndTime(selectedStartTime, timeCalculation.totalTime);
-      
-      tasksOnSameDate.forEach((task: any) => {
-        // Pour les nouvelles tâches avec teamMembers, compter les employés explicitement assignés
-        if (task.teamMembers && task.teamMembers.length > 0) {
-          assignedEmployees += task.teamMembers.length;
-        } else {
-          // Pour les anciennes tâches sans teamMembers, ne pas les compter
-          // car on ne peut pas savoir qui était assigné et on veut permettre l'assignation
-          console.log('Skipping legacy task without teamMembers:', task.title);
-        }
-      });
-      
-      const actuallyAvailable = Math.max(0, totalEmployeesDynamic - assignedEmployees);
-      setAvailableEmployees(actuallyAvailable);
-      
-      console.log('Available employees calculation:', {
-        totalEmployees: totalEmployeesDynamic,
-        assignedEmployees,
-        actuallyAvailable,
-        conflictingTasks: tasksOnSameDate.filter((task: any) => {
-          const existingStart = task.startTime;
-          const existingEnd = task.endTime;
-          const newStartMinutes = parseInt(newTaskStart.split(':')[0]) * 60 + parseInt(newTaskStart.split(':')[1]);
-          const newEndMinutes = parseInt(newTaskEnd.split(':')[0]) * 60 + parseInt(newTaskEnd.split(':')[1]);
-          const existingStartMinutes = parseInt(existingStart.split(':')[0]) * 60 + parseInt(existingStart.split(':')[1]);
-          const existingEndMinutes = parseInt(existingEnd.split(':')[0]) * 60 + parseInt(existingEnd.split(':')[1]);
-          
-          return (
-            (newStartMinutes >= existingStartMinutes && newStartMinutes < existingEndMinutes) ||
-            (newEndMinutes > existingStartMinutes && newEndMinutes <= existingEndMinutes) ||
-            (newStartMinutes <= existingStartMinutes && newEndMinutes >= existingEndMinutes)
-          );
-        }).map((t: any) => ({ title: t.title, teamSize: t.teamSize }))
-      });
-      
-    } catch (error) {
-      console.error('Error calculating available employees:', error);
-      setAvailableEmployees(totalEmployeesDynamic);
-    }
-  };
-
-  // Mettre à jour les employés disponibles quand la date ou l'heure de début change
-  useEffect(() => {
-    calculateAvailableEmployees();
-  }, [selectedDate, selectedStartTime, packages, teamMembers.length, paletteCondition, totalEmployeesDynamic]);
 
   const addTeamMember = () => {
     const currentTeamSize = teamMembers.length;
@@ -480,24 +476,30 @@ export default function JobCalculatorTab() {
       const assignedIds: number[] = [];
       const currentTeamIds = teamMembers.map(member => member.id);
       
-      console.log('Loading assigned employees:', {
+      console.log('👥 Calculator - Loading assigned employees:', {
         currentTeamIds,
-        allEmployeesCount: allEmployees.length
+        allEmployeesCount: allEmployees ? allEmployees.length : 'null/undefined',
+        allEmployees: allEmployees ? allEmployees.map(e => ({id: e.id, name: e.name})) : 'null/undefined',
+        employeesLoading
       });
       
-      for (const employee of allEmployees) {
-        // Ne jamais considérer comme occupé si l'employé est déjà dans l'équipe actuelle
-        if (currentTeamIds.includes(employee.id)) {
-          console.log(`Employee ${employee.name} (${employee.id}) is in current team, skipping`);
-          continue;
+      if (allEmployees && allEmployees.length > 0) {
+        for (const employee of allEmployees) {
+          // Ne jamais considérer comme occupé si l'employé est déjà dans l'équipe actuelle
+          if (currentTeamIds.includes(employee.id)) {
+            console.log(`Employee ${employee.name} (${employee.id}) is in current team, skipping`);
+            continue;
+          }
+          
+          const isAssigned = await isEmployeeAssigned(employee.id);
+          console.log(`Employee ${employee.name} (${employee.id}) is assigned:`, isAssigned);
+          
+          if (isAssigned) {
+            assignedIds.push(employee.id);
+          }
         }
-        
-        const isAssigned = await isEmployeeAssigned(employee.id);
-        console.log(`Employee ${employee.name} (${employee.id}) is assigned:`, isAssigned);
-        
-        if (isAssigned) {
-          assignedIds.push(employee.id);
-        }
+      } else {
+        console.log('👥 Calculator - No employees available for assignment check');
       }
       
       console.log('Final assigned employee IDs:', assignedIds);
@@ -506,41 +508,6 @@ export default function JobCalculatorTab() {
       console.error('Error loading assigned employees:', error);
     }
   };
-
-  const calculateWorkTime = () => {
-    const packageCount = parseInt(packages) || 0;
-    
-    // Base time: 40 seconds per package
-    const baseTimeSeconds = packageCount * 40;
-    
-    // Palette condition penalty: 20 minutes if bad condition
-    const palettePenaltySeconds = paletteCondition ? 0 : 20 * 60;
-    
-    // Team efficiency: each additional member saves 30 minutes (1800 seconds)
-    const additionalMembers = teamMembers.length - 1;
-    const teamBonusSeconds = additionalMembers * 30 * 60;
-    
-    // Calculate total time
-    const totalTimeSeconds = Math.max(0, baseTimeSeconds + palettePenaltySeconds - teamBonusSeconds);
-    
-    // Convert to hours and minutes
-    const hours = Math.floor(totalTimeSeconds / 3600);
-    const minutes = Math.floor((totalTimeSeconds % 3600) / 60);
-    const seconds = totalTimeSeconds % 60;
-    
-    return {
-      baseTime: baseTimeSeconds,
-      palettePenalty: palettePenaltySeconds,
-      teamBonus: teamBonusSeconds,
-      totalTime: totalTimeSeconds,
-      hours,
-      minutes,
-      seconds,
-      formattedTime: `${hours}h ${minutes.toString().padStart(2, '0')}min ${seconds.toString().padStart(2, '0')}s`
-    };
-  };
-
-  const timeCalculation = calculateWorkTime();
 
   const getTimeColor = (totalSeconds: number) => {
     const hours = totalSeconds / 3600;
@@ -559,36 +526,6 @@ export default function JobCalculatorTab() {
     });
   };
 
-
-
-  const calculateEndTime = (startTime: string, durationSeconds: number) => {
-    const [hours, minutes] = startTime.split(':').map(Number);
-    const startDate = new Date();
-    startDate.setHours(hours, minutes, 0, 0);
-    
-    const endDate = new Date(startDate.getTime() + durationSeconds * 1000);
-    
-    // Retourner le format HH:MM pour les comparaisons
-    return endDate.toLocaleTimeString('fr-FR', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false
-    });
-  };
-
-  const formatEndTimeForDisplay = (startTime: string, durationSeconds: number) => {
-    const [hours, minutes] = startTime.split(':').map(Number);
-    const startDate = new Date();
-    startDate.setHours(hours, minutes, 0, 0);
-    
-    const endDate = new Date(startDate.getTime() + durationSeconds * 1000);
-    
-    return endDate.toLocaleTimeString('fr-FR', {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
   // Fonction pour trier les événements chronologiquement
   const sortEventsChronologically = (events: Array<{title: string, startTime: string, endTime: string, type?: string}>) => {
     return events.sort((a, b) => {
@@ -600,11 +537,8 @@ export default function JobCalculatorTab() {
 
   const checkPlanningConflicts = async () => {
     try {
-      const existingTasksString = await AsyncStorage.getItem('scheduledTasks');
-      const existingTasks = existingTasksString ? JSON.parse(existingTasksString) : [];
-      
       const selectedDateString = selectedDate.toISOString().split('T')[0];
-      const tasksOnSameDate = existingTasks.filter((task: any) => task.date === selectedDateString);
+      const tasksOnSameDate = await getTasksByDate(selectedDateString);
       
       // Événements fixes (réunions, formations, etc.)
       const fixedEvents = [
@@ -628,14 +562,14 @@ export default function JobCalculatorTab() {
       console.log('Checking conflicts for:', {
         newTaskStart,
         newTaskEnd,
-        existingTasks: tasksOnSameDate.map((t: any) => ({ title: t.title, start: t.startTime, end: t.endTime })),
+        existingTasks: tasksOnSameDate.map((t: any) => ({ title: t.title, start: t.start_time, end: t.end_time })),
         fixedEvents: fixedEvents.map((e: any) => ({ title: e.title, start: e.startTime, end: e.endTime }))
       });
       
       // Vérifier les conflits avec les tâches planifiées
       const taskConflicts = tasksOnSameDate.filter((task: any) => {
-        const existingStart = task.startTime;
-        const existingEnd = task.endTime;
+        const existingStart = task.start_time;
+        const existingEnd = task.end_time;
         
         // Convertir les heures en minutes pour faciliter la comparaison
         const newStartMinutes = parseInt(newTaskStart.split(':')[0]) * 60 + parseInt(newTaskStart.split(':')[1]);
@@ -662,8 +596,8 @@ export default function JobCalculatorTab() {
         return hasConflict;
       }).map((task: any) => ({
         title: task.title,
-        startTime: task.startTime,
-        endTime: task.endTime,
+        startTime: task.start_time,
+        endTime: task.end_time,
         type: 'task'
       }));
       
@@ -775,15 +709,16 @@ export default function JobCalculatorTab() {
     const task: Task = {
       id: Date.now().toString(),
       title: `${currentManager.section} - ${currentManager.initials}`,
-      startTime: selectedStartTime,
-      endTime,
+      start_time: selectedStartTime,
+      end_time: endTime,
       duration: timeCalculation.formattedTime,
       date: selectedDate.toISOString().split('T')[0],
       packages: parseInt(packages),
-      teamSize: teamMembers.length,
-      managerSection: currentManager.section,
-      managerInitials: currentManager.initials,
-      teamMembers: teamMembers.map(member => member.id)
+      team_size: teamMembers.length,
+      manager_section: currentManager.section,
+      manager_initials: currentManager.initials,
+      palette_condition: paletteCondition,
+      team_members: teamMembers.map(member => member.id)
     };
     
     console.log('🎯 Tâche créée:', task);
@@ -815,16 +750,26 @@ export default function JobCalculatorTab() {
     try {
       console.log('💾 SaveTask - Début de sauvegarde:', task);
       
-      // Store task in AsyncStorage (in a real app, this would be sent to a backend)
-      const existingTasksString = await AsyncStorage.getItem('scheduledTasks');
-      const existingTasks = existingTasksString ? JSON.parse(existingTasksString) : [];
-      existingTasks.push(task);
-      await AsyncStorage.setItem('scheduledTasks', JSON.stringify(existingTasks));
+      // Sauvegarder la tâche dans Supabase
+      const result = await createTask({
+        title: task.title,
+        description: `${task.packages} colis`,
+        start_time: task.start_time,
+        end_time: task.end_time,
+        date: task.date,
+        packages: task.packages,
+        team_size: task.team_size,
+        manager_section: task.manager_section,
+        manager_initials: task.manager_initials,
+        palette_condition: task.palette_condition,
+        team_members: task.team_members
+      });
 
-      console.log('✅ Tâche sauvegardée, total tâches:', existingTasks.length);
+      if (!result.success) {
+        throw new Error(result.error || 'Erreur lors de la sauvegarde');
+      }
 
-      // Force a small delay to ensure storage is updated
-      await new Promise(resolve => setTimeout(resolve, 100));
+      console.log('✅ Tâche sauvegardée dans Supabase');
 
       // Programmer un rappel de notification pour cette tâche
       await scheduleTaskReminder(task);
@@ -835,7 +780,7 @@ export default function JobCalculatorTab() {
       // Recalculer les employés disponibles après avoir ajouté la tâche
       calculateAvailableEmployees();
       
-      // Ajout : recalculer les stats avec un délai pour s'assurer que AsyncStorage est bien mis à jour
+      // Recalculer les stats
       setTimeout(() => {
         console.log('🔄 Recalcul des stats après sauvegarde');
         calculerStatsColis();
@@ -850,25 +795,6 @@ export default function JobCalculatorTab() {
   const goToCalendar = () => {
     setShowTaskModal(false);
     router.push('/(manager-tabs)/calendar');
-  };
-
-  // Réinitialiser le formulaire pour une nouvelle tâche
-  const resetForm = () => {
-    setPackages('');
-    setPaletteCondition(true);
-    setTeamMembers([]);
-    setSelectedDate(new Date());
-    setSelectedStartTime('05:00');
-    setShowTaskModal(false);
-    setShowEmployeeSelector(false);
-    setAssignedEmployees([]);
-    setAssignedEmployeeIds([]);
-    setShowConflictModal(false);
-    setPendingTask(null);
-    setConflictDetails(null);
-    setAllConflicts([]);
-    setTempSelectedHour('05');
-    setTempSelectedMinute('00');
   };
 
   const confirmTaskWithConflict = async () => {
@@ -932,53 +858,13 @@ export default function JobCalculatorTab() {
     }
   }, [teamMembers, showEmployeeSelector]);
 
-  // Fonction pour charger et calculer les colis du jour
-  const calculerStatsColis = async () => {
-    try {
-      console.log('🔍 CalculerStatsColis - Début du calcul');
-      const tasksString = await AsyncStorage.getItem('scheduledTasks');
-      console.log('📦 Tâches stockées:', tasksString);
-      
-      const tasks = tasksString ? JSON.parse(tasksString) : [];
-      const selectedDateString = selectedDate.toISOString().split('T')[0];
-      console.log('📅 Date sélectionnée:', selectedDateString);
-      
-      const tasksForSelectedDate = tasks.filter((t: any) => t.date === selectedDateString);
-      console.log('📋 Tâches pour la date sélectionnée:', tasksForSelectedDate);
-      
-      const total = tasksForSelectedDate.reduce((sum: number, t: any) => sum + (t.packages || 0), 0);
-      const traites = tasksForSelectedDate.reduce((sum: number, t: any) => sum + (t.packages || 0), 0);
-      
-      console.log('📊 Résultats calcul:', { total, traites, pourcentage: total > 0 ? Math.round((traites / total) * 100) : 0 });
-      
-      setTotalColisJour(total);
-      setColisTraitesJour(traites);
-      setPourcentageColisTraites(total > 0 ? Math.round((traites / total) * 100) : 0);
-    } catch (e) {
-      console.error('❌ Erreur dans calculerStatsColis:', e);
-      setTotalColisJour(0);
-      setColisTraitesJour(0);
-      setPourcentageColisTraites(0);
-    }
-  };
-
-  // Charger au focus et après ajout de tâche
-  useEffect(() => {
-    if (isFocused) calculerStatsColis();
-  }, [isFocused]);
-
-  // Recalculer les stats quand la date sélectionnée change
-  useEffect(() => {
-    calculerStatsColis();
-  }, [selectedDate]);
-
   // Charger les tâches planifiées du jour
   const loadTasksForSelectedDate = async () => {
     try {
       const tasksString = await AsyncStorage.getItem('scheduledTasks');
       const tasks = tasksString ? JSON.parse(tasksString) : [];
       const selectedDateString = selectedDate.toISOString().split('T')[0];
-      const filtered = tasks.filter((t) => t.date === selectedDateString);
+      const filtered = tasks.filter((t: any) => t.date === selectedDateString);
       setTasksForSelectedDate(filtered);
     } catch (e) {
       setTasksForSelectedDate([]);
@@ -991,17 +877,17 @@ export default function JobCalculatorTab() {
   }, [selectedDate, showTaskModal]);
 
   // Marquer une tâche comme traitée (ici, suppression immédiate)
-  const handleMarkTaskAsDone = async (taskId) => {
+  const handleMarkTaskAsDone = async (taskId: string) => {
     const tasksString = await AsyncStorage.getItem('scheduledTasks');
     let tasks = tasksString ? JSON.parse(tasksString) : [];
-    tasks = tasks.filter(t => t.id !== taskId);
+    tasks = tasks.filter((t: any) => t.id !== taskId);
     await AsyncStorage.setItem('scheduledTasks', JSON.stringify(tasks));
     calculerStatsColis();
     loadTasksForSelectedDate();
   };
 
   // Supprimer une tâche avec confirmation
-  const handleDeleteTask = (taskId) => {
+  const handleDeleteTask = (taskId: string) => {
     Alert.alert(
       "Supprimer la tâche",
       "Es-tu sûr de vouloir supprimer cette tâche ?",
@@ -1010,7 +896,7 @@ export default function JobCalculatorTab() {
         { text: "Supprimer", style: "destructive", onPress: async () => {
           const tasksString = await AsyncStorage.getItem('scheduledTasks');
           let tasks = tasksString ? JSON.parse(tasksString) : [];
-          tasks = tasks.filter(t => t.id !== taskId);
+          tasks = tasks.filter((t: any) => t.id !== taskId);
           await AsyncStorage.setItem('scheduledTasks', JSON.stringify(tasks));
           calculerStatsColis();
           loadTasksForSelectedDate();
@@ -1019,85 +905,240 @@ export default function JobCalculatorTab() {
     );
   };
 
-  return (
-    <SafeAreaView style={styles.container}>
-      {/* Notification d'heure hors plage */}
-      {/* Bloc supprimé : Animated.View, showTimeWarning, notificationFadeAnim, cooldownProgress */}
+  // Mettre à jour le nombre total d'employés quand les employés Supabase changent
+  useEffect(() => {
+    console.log('👥 Calculator - allEmployees changed:', {
+      allEmployees: allEmployees ? allEmployees.length : 'null/undefined',
+      employeesLoading,
+      userAuth: user?.app_metadata?.user_id
+    });
+    
+    // Mettre à jour même si allEmployees est vide pour refléter la réalité
+    if (allEmployees !== undefined && allEmployees !== null) {
+      console.log('👥 Calculator - Setting totalEmployeesDynamic to:', allEmployees.length);
+      setTotalEmployeesDynamic(allEmployees.length);
+    }
+  }, [allEmployees, employeesLoading]);
+
+  // Ajout de logs détaillés pour le debug
+  useEffect(() => {
+    console.log('🟦 [DEBUG] Calculator - allEmployees:', allEmployees);
+    console.log('🟦 [DEBUG] Calculator - employeesLoading:', employeesLoading);
+    if (allEmployees && Array.isArray(allEmployees)) {
+      allEmployees.forEach((emp, idx) => {
+        console.log(`🟦 [DEBUG] Employé #${idx}:`, emp);
+      });
+    }
+  }, [allEmployees, employeesLoading]);
+
+  // Recharger les données quand l'utilisateur revient sur cette page
+  useFocusEffect(
+    React.useCallback(() => {
+      loadTotalEmployees();
+    }, [])
+  );
+
+  // Recharger les heures de travail quand l'utilisateur revient sur cette page
+  useFocusEffect(
+    React.useCallback(() => {
+      loadWorkingHours();
+    }, [])
+  );
+
+  // Nettoyer le formulaire quand l'utilisateur revient sur cette page
+  useFocusEffect(
+    React.useCallback(() => {
+      resetForm();
+    }, [])
+  );
+
+  useEffect(() => {
+    if (showDatePicker) {
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 150, // Animation très rapide de 150ms
+        useNativeDriver: true,
+      }).start();
+    } else {
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 100, // Disparition encore plus rapide de 100ms
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [showDatePicker, fadeAnim]);
+
+  // Early return si managerId non disponible
+  if (!managerId) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <Text>Chargement du manager...</Text>
+      </View>
+    );
+  }
+
+  // Early return si le profil utilisateur est en cours de chargement
+  if (profileLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <Text>Chargement du profil utilisateur...</Text>
+      </View>
+    );
+  }
+
+  // Vérifier si un employé est déjà assigné à une tâche (occupé ou en conflit)
+  const isEmployeeAssigned = async (employeeId: number) => {
+    try {
+      const selectedDateString = selectedDate.toISOString().split('T')[0];
+      const tasksOnSameDate = await getTasksByDate(selectedDateString);
       
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      // Calculer la durée de la nouvelle tâche
+      const packageCount = parseInt(packages) || 0;
+      const baseTimeSeconds = packageCount * 40;
+      const palettePenaltySeconds = paletteCondition ? 0 : 20 * 60;
+      const additionalMembers = teamMembers.length - 1;
+      const teamBonusSeconds = additionalMembers * 30 * 60;
+      const totalTimeSeconds = Math.max(0, baseTimeSeconds + palettePenaltySeconds - teamBonusSeconds);
+      
+      const newTaskStart = selectedStartTime;
+      const newTaskEnd = calculateEndTime(selectedStartTime, totalTimeSeconds);
+      
+      // Vérifier si l'employé est dans une tâche qui se chevauche
+      for (const task of tasksOnSameDate) {
+        const existingStart = task.start_time;
+        const existingEnd = task.end_time;
+        
+        const newStartMinutes = parseInt(newTaskStart.split(':')[0]) * 60 + parseInt(newTaskStart.split(':')[1]);
+        const newEndMinutes = parseInt(newTaskEnd.split(':')[0]) * 60 + parseInt(newTaskEnd.split(':')[1]);
+        const existingStartMinutes = parseInt(existingStart.split(':')[0]) * 60 + parseInt(existingStart.split(':')[1]);
+        const existingEndMinutes = parseInt(existingEnd.split(':')[0]) * 60 + parseInt(existingEnd.split(':')[1]);
+        
+        const hasConflict = (
+          (newStartMinutes >= existingStartMinutes && newStartMinutes < existingEndMinutes) ||
+          (newEndMinutes > existingStartMinutes && newEndMinutes <= existingEndMinutes) ||
+          (newStartMinutes <= existingStartMinutes && newEndMinutes >= existingEndMinutes)
+        );
+        
+        // Vérifier si l'employé est dans cette tâche
+        const isInTask = task.team_members && task.team_members.includes(employeeId);
+        
+        // Ne pas considérer les anciennes tâches sans team_members comme des conflits
+        const isLegacyTask = !task.team_members;
+        
+        // Ne pas considérer comme conflit si c'est la même tâche (même heure de début)
+        const isSameTask = existingStart === newTaskStart;
+        
+        // Vérifier les conflits pour les tâches avec des employés explicitement assignés
+        if (hasConflict && isInTask && !isSameTask) {
+          console.log(`Employee ${employeeId} is assigned to conflicting task:`, task.title);
+          return true;
+        }
+        
+        // Vérifier si l'employé est simplement assigné à une tâche (même sans conflit temporel)
+        // pour éviter qu'il soit assigné à plusieurs tâches
+        if (isInTask && !isSameTask) {
+          console.log(`Employee ${employeeId} is already assigned to task:`, task.title);
+          return true;
+        }
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('Error checking employee assignment:', error);
+      return false;
+    }
+  };
+
+  return (
+    <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
+      {/* Bouton retour */}
+      <View style={{ position: 'absolute', top: 16, left: 16, zIndex: 10 }}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={{ backgroundColor: isDark ? '#23293a' : '#f3f4f6', borderRadius: 24, padding: 8, borderWidth: 1, borderColor: isDark ? '#334155' : '#e5e7eb' }}
+          accessibilityLabel="Retour"
+        >
+          <ArrowLeft color={isDark ? '#60a5fa' : '#3b82f6'} size={24} strokeWidth={2} />
+        </TouchableOpacity>
+      </View>
+      <ScrollView style={styles.scrollView} contentContainerStyle={{flexGrow:1}} showsVerticalScrollIndicator={false}>
         {/* Header */}
-        <View style={styles.header}>
-          <Calculator color="#3b82f6" size={32} strokeWidth={2} />
-          <Text style={styles.title}>Calculateur d'Équipe</Text>
-          <Text style={styles.subtitle}>Calculez le temps de travail de votre équipe</Text>
-          <View style={styles.managerInfo}>
-            <Text style={styles.managerText}>Manager: {currentManager.name}</Text>
-            <Text style={styles.sectionText}>Rayon: {currentManager.section}</Text>
+        <View style={[styles.header, isDark && styles.sectionDark]}>
+          <Calculator color={isDark ? '#60a5fa' : '#3b82f6'} size={32} strokeWidth={2} />
+          <Text style={[styles.title, isDark && styles.textDark]}>Calculateur d'Équipe</Text>
+          <Text style={[styles.subtitle, isDark && styles.textDark]}>Calculez le temps de travail de votre équipe</Text>
+          <View style={[styles.managerInfo, isDark && styles.cardDark]}>
+            <Text style={[styles.managerText, isDark && styles.textDark]}>
+              Manager: {currentManager.name}
+            </Text>
+            <Text style={[styles.sectionText, isDark && styles.textDark]}>
+              Rayon: {currentManager.section}
+            </Text>
           </View>
         </View>
 
         {/* Date & Time Selection */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Date et heure de planification</Text>
+        <View style={[styles.section, isDark && styles.sectionDark]}>
+          <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Date et heure de planification</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             <TouchableOpacity 
-              style={styles.dateSelector}
+              style={[styles.dateSelector, isDark && styles.dateSelectorDark]}
               onPress={() => setShowDatePicker(true)}
             >
-              <Calendar color="#3b82f6" size={20} strokeWidth={2} />
-              <Text style={styles.dateText}>{formatDate(selectedDate)}</Text>
+              <Calendar color={isDark ? '#60a5fa' : '#3b82f6'} size={20} strokeWidth={2} />
+              <Text style={[styles.dateText, isDark && styles.textDark]}>{formatDate(selectedDate)}</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.dateSelector, { flexDirection: 'row', minWidth: 90, justifyContent: 'center' }]}
+              style={[styles.dateSelector, isDark && styles.dateSelectorDark, { flexDirection: 'row', minWidth: 90, justifyContent: 'center' }]}
               onPress={openTimePicker}
             >
-              <Clock color="#3b82f6" size={20} strokeWidth={2} />
-              <Text style={styles.dateText}>{selectedStartTime}</Text>
+              <Clock color={isDark ? '#60a5fa' : '#3b82f6'} size={20} strokeWidth={2} />
+              <Text style={[styles.dateText, isDark && styles.textDark]}>{selectedStartTime}</Text>
             </TouchableOpacity>
           </View>
         </View>
 
         {/* Package Input */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Paramètres de la tâche</Text>
+        <View style={[styles.section, isDark && styles.sectionDark]}>
+          <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Paramètres de la tâche</Text>
           
-          <View style={styles.inputCard}>
+          <View style={[styles.inputCard, isDark && styles.inputCardDark]}>
             <View style={styles.inputHeader}>
-              <Package color="#3b82f6" size={20} strokeWidth={2} />
-              <Text style={styles.inputLabel}>Nombre de colis à traiter</Text>
+              <Package color={isDark ? '#60a5fa' : '#3b82f6'} size={20} strokeWidth={2} />
+              <Text style={[styles.inputLabel, isDark && styles.textDark]}>Nombre de colis à traiter</Text>
             </View>
             <TextInput
-              style={styles.input}
+              style={[styles.input, isDark && styles.inputDark]}
               value={packages}
               onChangeText={setPackages}
               placeholder="Ex: 150"
               keyboardType="numeric"
-              placeholderTextColor="#9ca3af"
+              placeholderTextColor={isDark ? '#64748b' : '#9ca3af'}
             />
-            <Text style={styles.inputNote}>Base: 40 secondes par colis</Text>
+            <Text style={[styles.inputNote, isDark && styles.textDark]}>Base: 40 secondes par colis</Text>
           </View>
 
           {/* Palette Condition */}
-          <View style={styles.inputCard}>
+          <View style={[styles.inputCard, isDark && styles.inputCardDark]}>
             <View style={styles.inputHeader}>
               <AlertTriangle 
-                color={paletteCondition ? "#10b981" : "#ef4444"} 
+                color={paletteCondition ? (isDark ? '#22d3ee' : '#10b981') : '#ef4444'} 
                 size={20} 
                 strokeWidth={2} 
               />
-              <Text style={styles.inputLabel}>État de la palette</Text>
+              <Text style={[styles.inputLabel, isDark && styles.textDark]}>État de la palette</Text>
             </View>
             <View style={styles.switchContainer}>
-              <Text style={[styles.switchLabel, !paletteCondition && styles.activeLabel]}>
+              <Text style={[styles.switchLabel, !paletteCondition && styles.activeLabel, isDark && styles.textDark]}>
                 Mauvais état (+20 min)
               </Text>
               <Switch
                 value={paletteCondition}
                 onValueChange={setPaletteCondition}
-                trackColor={{ false: '#ef4444', true: '#10b981' }}
+                trackColor={{ false: '#ef4444', true: (isDark ? '#22d3ee' : '#10b981') }}
                 thumbColor={paletteCondition ? '#ffffff' : '#ffffff'}
               />
-              <Text style={[styles.switchLabel, paletteCondition && styles.activeLabel]}>
+              <Text style={[styles.switchLabel, paletteCondition && styles.activeLabel, isDark && styles.textDark]}>
                 Bon état
               </Text>
             </View>
@@ -1105,20 +1146,20 @@ export default function JobCalculatorTab() {
         </View>
 
         {/* Team Management */}
-        <View style={styles.section}>
+        <View style={[styles.section, isDark && styles.sectionDark]}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Composition de l'équipe</Text>
+            <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Composition de l'équipe</Text>
             <View style={styles.teamInfo}>
-              <Text style={styles.teamCount}>{teamMembers.length}/{availableEmployees} membres</Text>
-              <View style={styles.employeeInfo}>
-                <Text style={styles.employeeInfoText}>
+              <Text style={[styles.teamCount, isDark && styles.textDark]}>{teamMembers.length}/{availableEmployees} membres</Text>
+              <View style={[styles.employeeInfo, isDark && styles.employeeInfoDark]}>
+                <Text style={[styles.employeeInfoText, isDark && styles.textDark]}>
                   {availableEmployees - teamMembers.length} employé{availableEmployees - teamMembers.length > 1 ? 's' : ''} restant{availableEmployees - teamMembers.length > 1 ? 's' : ''}
                 </Text>
-                <Text style={styles.totalEmployeesText}>
+                <Text style={[styles.totalEmployeesText, isDark && styles.textDark]}>
                   Équipe rayon: {totalEmployeesDynamic} employé{totalEmployeesDynamic > 1 ? 's' : ''} total
                 </Text>
                 {availableEmployees < totalEmployeesDynamic && (
-                  <Text style={styles.employeeWarningText}>
+                  <Text style={[styles.employeeWarningText, isDark && styles.textDark]}>
                     ⚠️ {totalEmployeesDynamic - availableEmployees} employé{totalEmployeesDynamic - availableEmployees > 1 ? 's' : ''} déjà assigné{totalEmployeesDynamic - availableEmployees > 1 ? 's' : ''} à d'autres tâches
                   </Text>
                 )}
@@ -1127,33 +1168,33 @@ export default function JobCalculatorTab() {
           </View>
           
           {/* Bouton pour ouvrir le sélecteur d'employés */}
-          <TouchableOpacity style={styles.employeeSelectorButton} onPress={openEmployeeSelector}>
-            <Users color="#3b82f6" size={24} strokeWidth={2} />
-            <Text style={styles.employeeSelectorText}>
+          <TouchableOpacity style={[styles.employeeSelectorButton, isDark && styles.cardDark]} onPress={openEmployeeSelector}>
+            <Users color={isDark ? '#60a5fa' : '#3b82f6'} size={24} strokeWidth={2} />
+            <Text style={[styles.employeeSelectorText, isDark && styles.textDark]}>
               Sélectionner les membres de l'équipe
             </Text>
-            <Text style={styles.employeeSelectorSubtext}>
+            <Text style={[styles.employeeSelectorSubtext, isDark && styles.textDark]}>
               {teamMembers.length} membre{teamMembers.length > 1 ? 's' : ''} sélectionné{teamMembers.length > 1 ? 's' : ''}
             </Text>
           </TouchableOpacity>
           
           {/* Liste des employés sélectionnés */}
           {teamMembers.map((member, index) => (
-            <View key={member.id} style={styles.memberCard}>
+            <View key={member.id} style={[styles.memberCard, isDark && styles.cardDark]}>
               <View style={styles.memberInfo}>
                 {member.avatar ? (
                   <Image source={{ uri: member.avatar }} style={styles.memberAvatar} />
                 ) : (
-                  <View style={styles.memberAvatarPlaceholder}>
-                    <Users color="#3b82f6" size={20} strokeWidth={2} />
+                  <View style={[styles.memberAvatarPlaceholder, isDark && styles.cardDark]}>
+                    <Users color={isDark ? '#60a5fa' : '#3b82f6'} size={20} strokeWidth={2} />
                   </View>
                 )}
                 <View style={styles.memberDetails}>
-                  <Text style={styles.memberName}>{member.name}</Text>
-                  {member.role && <Text style={styles.memberRole}>{member.role}</Text>}
+                  <Text style={[styles.memberName, isDark && styles.textDark]}>{member.name}</Text>
+                  {member.role && <Text style={[styles.memberRole, isDark && styles.textDark]}>{member.role}</Text>}
                 </View>
-                {index === 0 && <Text style={styles.principalBadge}>Principal</Text>}
-                {index > 0 && <Text style={styles.bonusBadge}>-30 min</Text>}
+                {index === 0 && <Text style={[styles.principalBadge, isDark && styles.cardDark]}>Principal</Text>}
+                {index > 0 && <Text style={[styles.bonusBadge, isDark && styles.cardDark]}>-30 min</Text>}
               </View>
               <TouchableOpacity 
                 style={styles.removeButton}
@@ -1165,41 +1206,41 @@ export default function JobCalculatorTab() {
           ))}
 
           {teamMembers.length === 0 && (
-            <View style={styles.noEmployeeCard}>
-              <Text style={styles.noEmployeeText}>
+            <View style={[styles.noEmployeeCard, isDark && styles.cardDark]}>
+              <Text style={[styles.noEmployeeText, isDark && styles.textDark]}>
                 Aucun membre sélectionné
               </Text>
-              <Text style={styles.noEmployeeSubtext}>
+              <Text style={[styles.noEmployeeSubtext, isDark && styles.textDark]}>
                 Cliquez sur "Sélectionner les membres" pour ajouter des employés à cette tâche
               </Text>
             </View>
           )}
 
-          <View style={styles.teamNote}>
-            <Text style={styles.noteText}>
+          <View style={[styles.teamNote, isDark && styles.teamNoteDark]}>
+            <Text style={[styles.noteText, isDark && styles.textDark]}>
               💡 Chaque membre supplémentaire réduit le temps de 30 minutes
             </Text>
           </View>
         </View>
 
         {/* Time Breakdown */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Détail du calcul</Text>
+        <View style={[styles.section, isDark && styles.sectionDark]}>
+          <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Détail du calcul</Text>
           
-          <View style={styles.calculationCard}>
+          <View style={[styles.calculationCard, isDark && styles.calculationCardDark]}>
             <View style={styles.calculationRow}>
-              <Text style={styles.calculationLabel}>Temps de base</Text>
-              <Text style={styles.calculationValue}>
+              <Text style={[styles.calculationLabel, isDark && styles.textDark]}>Temps de base</Text>
+              <Text style={[styles.calculationValue, isDark && styles.textDark]}>
                 {Math.floor(timeCalculation.baseTime / 60)} min
               </Text>
             </View>
             
             {!paletteCondition && (
               <View style={styles.calculationRow}>
-                <Text style={[styles.calculationLabel, styles.penaltyText]}>
+                <Text style={[styles.calculationLabel, styles.penaltyText, isDark && styles.textDark]}>
                   Pénalité palette
                 </Text>
-                <Text style={[styles.calculationValue, styles.penaltyText]}>
+                <Text style={[styles.calculationValue, styles.penaltyText, isDark && styles.textDark]}>
                   +{Math.floor(timeCalculation.palettePenalty / 60)} min
                 </Text>
               </View>
@@ -1207,18 +1248,18 @@ export default function JobCalculatorTab() {
             
             {teamMembers.length > 1 && (
               <View style={styles.calculationRow}>
-                <Text style={[styles.calculationLabel, styles.bonusText]}>
+                <Text style={[styles.calculationLabel, styles.bonusText, isDark && styles.textDark]}>
                   Bonus équipe ({teamMembers.length - 1} membres)
                 </Text>
-                <Text style={[styles.calculationValue, styles.bonusText]}>
+                <Text style={[styles.calculationValue, styles.bonusText, isDark && styles.textDark]}>
                   -{Math.floor(timeCalculation.teamBonus / 60)} min
                 </Text>
               </View>
             )}
 
-            <View style={styles.scheduleInfo}>
-              <Text style={styles.scheduleLabel}>Horaires prévus:</Text>
-              <Text style={styles.scheduleTime}>
+            <View style={[styles.scheduleInfo, isDark && styles.scheduleInfoDark]}>
+              <Text style={[styles.scheduleLabel, isDark && styles.textDark]}>Horaires prévus:</Text>
+              <Text style={[styles.scheduleTime, isDark && styles.textDark]}>
                 Début: {selectedStartTime} - Fin: {formatEndTimeForDisplay(selectedStartTime, timeCalculation.totalTime)}
               </Text>
             </View>
@@ -1226,23 +1267,23 @@ export default function JobCalculatorTab() {
         </View>
 
         {/* Final Result */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Temps total estimé</Text>
+        <View style={[styles.section, isDark && styles.sectionDark]}>
+          <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Temps total estimé</Text>
           
-          <View style={[styles.resultCard, { borderColor: getTimeColor(timeCalculation.totalTime) }]}>
+          <View style={[styles.resultCard, isDark && styles.resultCardDark, { borderColor: getTimeColor(timeCalculation.totalTime) }]}>
             <View style={styles.resultHeader}>
               <Clock color={getTimeColor(timeCalculation.totalTime)} size={32} strokeWidth={2} />
-              <Text style={[styles.resultTime, { color: getTimeColor(timeCalculation.totalTime) }]}>
+              <Text style={[styles.resultTime, { color: getTimeColor(timeCalculation.totalTime) }, isDark && styles.textDark]}>
                 {timeCalculation.formattedTime}
               </Text>
             </View>
             
             <View style={styles.resultDetails}>
-              <Text style={styles.resultLabel}>
+              <Text style={[styles.resultLabel, isDark && styles.textDark]}>
                 Pour {packages || '0'} colis avec {teamMembers.length} membre{teamMembers.length > 1 ? 's' : ''}
               </Text>
               {!paletteCondition && (
-                <Text style={styles.warningText}>
+                <Text style={[styles.warningText, isDark && styles.textDark]}>
                   ⚠️ Palette en mauvais état - temps majoré
                 </Text>
               )}
@@ -1251,13 +1292,13 @@ export default function JobCalculatorTab() {
         </View>
 
         {/* Action Buttons */}
-        <View style={styles.actionSection}>
-          <TouchableOpacity style={styles.saveButton} onPress={startTask}>
-            <Text style={styles.saveButtonText}>Démarrer la tâche</Text>
+        <View style={[styles.actionSection, isDark && styles.sectionDark]}>
+          <TouchableOpacity style={[styles.saveButton, isDark && styles.saveButtonDark]} onPress={startTask}>
+            <Text style={[styles.saveButtonText, isDark && styles.textDark]}>Démarrer la tâche</Text>
           </TouchableOpacity>
           
-          <TouchableOpacity style={styles.secondaryButton}>
-            <Text style={styles.secondaryButtonText}>Sauvegarder le calcul</Text>
+          <TouchableOpacity style={[styles.secondaryButton, isDark && styles.secondaryButtonDark]}>
+            <Text style={[styles.secondaryButtonText, isDark && styles.secondaryButtonTextDark]}>Sauvegarder le calcul</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -1346,7 +1387,7 @@ export default function JobCalculatorTab() {
             <View style={styles.timePickerContainer}>
               <View style={styles.timePickerSection}>
                 <Text style={styles.timePickerLabel}>Heures</Text>
-                <ScrollView style={styles.timePickerScroll} showsVerticalScrollIndicator={false}>
+                <ScrollView style={styles.timePickerScroll} contentContainerStyle={{flexGrow:1}} showsVerticalScrollIndicator={false}>
                   {generateAvailableHours().map((hour) => (
                     <TouchableOpacity
                       key={`hour-${hour}`}
@@ -1373,7 +1414,7 @@ export default function JobCalculatorTab() {
 
               <View style={styles.timePickerSection}>
                 <Text style={styles.timePickerLabel}>Minutes</Text>
-                <ScrollView style={styles.timePickerScroll} showsVerticalScrollIndicator={false}>
+                <ScrollView style={styles.timePickerScroll} contentContainerStyle={{flexGrow:1}} showsVerticalScrollIndicator={false}>
                   {generateAvailableMinutes().map((minute) => (
                     <TouchableOpacity
                       key={`minute-${minute}`}
@@ -1459,7 +1500,7 @@ export default function JobCalculatorTab() {
                 Votre nouvelle tâche entre en conflit avec {allConflicts.length} événement{allConflicts.length > 1 ? 's' : ''} existant{allConflicts.length > 1 ? 's' : ''} :
               </Text>
               
-              <ScrollView style={styles.conflictsList} showsVerticalScrollIndicator={false}>
+              <ScrollView style={styles.conflictsList} contentContainerStyle={{flexGrow:1}} showsVerticalScrollIndicator={false}>
                 {allConflicts.map((conflict, index) => (
                   <View key={index} style={styles.conflictItem}>
                     <View style={styles.conflictItemHeader}>
@@ -1515,16 +1556,21 @@ export default function JobCalculatorTab() {
         onRequestClose={() => setShowEmployeeSelector(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
+          <View style={[styles.modalContent, isDark && styles.modalContentDark]}>
+            <View style={[styles.modalHeader, isDark && styles.modalHeaderDark]}>
               <Text style={styles.modalTitle}>Sélectionner les employés</Text>
               <TouchableOpacity onPress={() => setShowEmployeeSelector(false)}>
                 <X color="#6b7280" size={24} strokeWidth={2} />
               </TouchableOpacity>
             </View>
-            
-            <ScrollView style={styles.employeeList} showsVerticalScrollIndicator={false}>
-              {allEmployees.map((employee) => {
+            <View style={[styles.modalDivider, isDark && styles.modalDividerDark]} />
+            <ScrollView style={styles.employeeList} contentContainerStyle={{flexGrow:1}} showsVerticalScrollIndicator={false}>
+              {employeesLoading ? (
+                <View style={{ padding: 20, alignItems: 'center' }}>
+                  <Text style={{ color: '#6b7280' }}>Chargement des employés...</Text>
+                </View>
+              ) : allEmployees && allEmployees.length > 0 ? (
+                allEmployees.map((employee) => {
                 const isSelected = teamMembers.find(member => member.id === employee.id);
                 const isAssigned = assignedEmployeeIds.includes(employee.id);
                 
@@ -1533,6 +1579,7 @@ export default function JobCalculatorTab() {
                     key={employee.id}
                     style={[
                       styles.employeeItem,
+                      isDark && styles.employeeCardDark,
                       isSelected && !isAssigned && styles.selectedEmployeeItem,
                       isAssigned && styles.assignedEmployeeItem,
                       isAssigned && styles.assignedEmployeeItemVisual
@@ -1613,15 +1660,22 @@ export default function JobCalculatorTab() {
                     </View>
                   </TouchableOpacity>
                 );
-              })}
+                })
+              ) : (
+                <View style={{ padding: 20, alignItems: 'center' }}>
+                  <Text style={{ color: '#6b7280', textAlign: 'center' }}>
+                    Aucun employé disponible.{'\n'}
+                    Ajoutez des employés dans la page "Équipe Rayon".
+                  </Text>
+                </View>
+              )}
             </ScrollView>
-
             <View style={styles.modalActions}>
               <TouchableOpacity 
-                style={styles.modalButton}
+                style={[styles.modalButton, isDark && styles.closeButtonDark]}
                 onPress={() => setShowEmployeeSelector(false)}
               >
-                <Text style={styles.modalButtonText}>Fermer</Text>
+                <Text style={[styles.modalButtonText, isDark && styles.closeButtonTextDark, styles.modalText, isDark && styles.modalTextDark]}>Fermer</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1640,13 +1694,13 @@ export default function JobCalculatorTab() {
           <Swipeable
             key={task.id}
             renderLeftActions={() => (
-              <View style={{ backgroundColor: '#10b981', justifyContent: 'center', flex: 1 }}>
-                <Text style={{ color: 'white', padding: 20 }}>Traiter</Text>
+              <View style={{ backgroundColor: '#10b981', justifyContent: 'center', alignItems: 'center', flex: 1, minWidth: 80 }}>
+                <Text style={{ color: 'white', padding: 20, textAlign: 'center', fontSize: 14 }}>Traiter</Text>
               </View>
             )}
             renderRightActions={() => (
-              <View style={{ backgroundColor: '#ef4444', justifyContent: 'center', flex: 1 }}>
-                <Text style={{ color: 'white', padding: 20 }}>Supprimer</Text>
+              <View style={{ backgroundColor: '#ef4444', justifyContent: 'center', alignItems: 'center', flex: 1, minWidth: 80 }}>
+                <Text style={{ color: 'white', padding: 20, textAlign: 'center', fontSize: 14 }}>Supprimer</Text>
               </View>
             )}
             onSwipeableLeftOpen={() => handleMarkTaskAsDone(task.id)}
@@ -1663,9 +1717,9 @@ export default function JobCalculatorTab() {
               elevation: 2,
             }}>
               <Text style={{ fontWeight: 'bold' }}>{task.title}</Text>
-              <Text>Heure : {task.startTime} - {task.endTime}</Text>
+              <Text>Heure : {task.start_time} - {task.end_time}</Text>
               <Text>Colis : {task.packages}</Text>
-              <Text>Équipe : {task.teamSize}</Text>
+              <Text>Équipe : {task.team_size}</Text>
             </View>
           </Swipeable>
         ))}
@@ -1688,18 +1742,18 @@ export default function JobCalculatorTab() {
               <Text style={{fontSize: 14, fontWeight: 'bold', color: '#1f2937'}}>Colis du {formatDate(selectedDate)} : {totalColisJour}</Text>
               <Text style={{fontSize: 13, color: '#374151'}}>Colis traités : {colisTraitesJour} ({pourcentageColisTraites}%)</Text>
             </View>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-start' }}>
               <TouchableOpacity 
-                style={{backgroundColor: '#3b82f6', padding: 8, borderRadius: 6, marginBottom: 8, marginRight: 8}}
+                style={{backgroundColor: '#3b82f6', padding: 8, borderRadius: 6, marginBottom: 8, minWidth: 80, alignItems: 'center'}}
                 onPress={() => {
                   console.log('🔄 Bouton de rafraîchissement cliqué');
                   calculerStatsColis();
                 }}
               >
-                <Text style={{color: 'white', fontSize: 12}}>�� Rafraîchir</Text>
+                <Text style={{color: 'white', fontSize: 12, textAlign: 'center'}}>🔄 Rafraîchir</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={{backgroundColor: '#ef4444', padding: 8, borderRadius: 6, marginBottom: 8, marginRight: 8}}
+                style={{backgroundColor: '#ef4444', padding: 8, borderRadius: 6, marginBottom: 8, minWidth: 80, alignItems: 'center'}}
                 onPress={async () => {
                   console.log('🔍 Test AsyncStorage - Début');
                   try {
@@ -1724,10 +1778,10 @@ export default function JobCalculatorTab() {
                   }
                 }}
               >
-                <Text style={{color: 'white', fontSize: 12}}>🔍 Debug</Text>
+                <Text style={{color: 'white', fontSize: 12, textAlign: 'center'}}>🔍 Debug</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={{backgroundColor: '#f59e0b', padding: 8, borderRadius: 6, marginBottom: 8, marginRight: 8}} 
+                style={{backgroundColor: '#f59e0b', padding: 8, borderRadius: 6, marginBottom: 8, minWidth: 80, alignItems: 'center'}} 
                 onPress={() => {
                   sendImmediateNotification(
                     '🧪 Test de notification',
@@ -1736,10 +1790,10 @@ export default function JobCalculatorTab() {
                   );
                 }}
               >
-                <Text style={{color: 'white', fontSize: 12}}>🧪 Tester Notification</Text>
+                <Text style={{color: 'white', fontSize: 12, textAlign: 'center'}}>🧪 Tester Notification</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={{backgroundColor: '#10b981', padding: 8, borderRadius: 6, marginBottom: 8, marginRight: 8}} 
+                style={{backgroundColor: '#10b981', padding: 8, borderRadius: 6, marginBottom: 8, minWidth: 80, alignItems: 'center'}} 
                 onPress={() => {
                   // Créer une tâche qui commence dans 30 secondes
                   const futureTime = new Date(Date.now() + 30000); // 30 secondes
@@ -1757,10 +1811,10 @@ export default function JobCalculatorTab() {
                   Alert.alert('Test', 'Rappel programmé pour dans 30 secondes !');
                 }}
               >
-                <Text style={{color: 'white', fontSize: 12}}>⏰ Tester Rappel (30s)</Text>
+                <Text style={{color: 'white', fontSize: 12, textAlign: 'center'}}>⏰ Tester Rappel (30s)</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={{backgroundColor: '#8b5cf6', padding: 8, borderRadius: 6, marginBottom: 8, marginRight: 8}} 
+                style={{backgroundColor: '#8b5cf6', padding: 8, borderRadius: 6, marginBottom: 8, minWidth: 80, alignItems: 'center'}} 
                 onPress={() => {
                   Alert.alert('Test', 'Notification programmée pour dans 5 secondes !');
                   setTimeout(() => {
@@ -1772,10 +1826,10 @@ export default function JobCalculatorTab() {
                   }, 5000);
                 }}
               >
-                <Text style={{color: 'white', fontSize: 12}}>⏰ Test Délai Simulé (5s)</Text>
+                <Text style={{color: 'white', fontSize: 12, textAlign: 'center'}}>⏰ Test Délai Simulé (5s)</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={{backgroundColor: '#ef4444', padding: 8, borderRadius: 6, marginBottom: 8, marginRight: 8}} 
+                style={{backgroundColor: '#ef4444', padding: 8, borderRadius: 6, marginBottom: 8, minWidth: 80, alignItems: 'center'}} 
                 onPress={() => {
                   sendConflictAlert({
                     title: 'Tâche de test',
@@ -1785,10 +1839,10 @@ export default function JobCalculatorTab() {
                   });
                 }}
               >
-                <Text style={{color: 'white', fontSize: 12}}>⚠️ Tester Alerte Conflit</Text>
+                <Text style={{color: 'white', fontSize: 12, textAlign: 'center'}}>⚠️ Tester Alerte Conflit</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={{backgroundColor: '#f59e0b', padding: 8, borderRadius: 6, marginBottom: 8, marginRight: 8}} 
+                style={{backgroundColor: '#f59e0b', padding: 8, borderRadius: 6, marginBottom: 8, minWidth: 80, alignItems: 'center'}} 
                 onPress={() => {
                   if (Platform.OS === 'web') {
                     Alert.alert('Test Web', 'Sur le web, les notifications programmées ne fonctionnent pas. Utilisez Expo Go sur mobile pour tester les vrais rappels !');
@@ -1809,7 +1863,7 @@ export default function JobCalculatorTab() {
                   Alert.alert('Test', 'Notification programmée pour dans 30 secondes !');
                 }}
               >
-                <Text style={{color: 'white', fontSize: 12}}>⏰ Test Direct (30s)</Text>
+                <Text style={{color: 'white', fontSize: 12, textAlign: 'center'}}>⏰ Test Direct (30s)</Text>
               </TouchableOpacity>
             </View>
           </>
@@ -1824,8 +1878,52 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F5F5F5',
   },
+  containerDark: {
+    backgroundColor: '#18181b',
+  },
   scrollView: {
     flex: 1,
+  },
+  sectionDark: {
+    backgroundColor: 'transparent',
+  },
+  cardDark: {
+    backgroundColor: '#23232a',
+    borderColor: '#27272a',
+  },
+  inputCardDark: {
+    backgroundColor: '#23232a',
+    borderColor: '#27272a',
+  },
+  resultCardDark: {
+    backgroundColor: '#23232a',
+    borderColor: '#27272a',
+  },
+  dateSelectorDark: {
+    backgroundColor: '#23232a',
+    borderColor: '#27272a',
+  },
+  modalContentDark: {
+    backgroundColor: '#23293a',
+  },
+  modalDivider: {
+    height: 1,
+    backgroundColor: '#e5e7eb',
+    marginVertical: 12,
+  },
+  modalDividerDark: {
+    backgroundColor: '#334155',
+  },
+  inputDark: {
+    backgroundColor: '#18181b',
+    color: '#f1f5f9',
+    borderColor: '#27272a',
+  },
+  textDark: {
+    color: '#f1f5f9',
+  },
+  textSecondaryDark: {
+    color: '#a1a1aa',
   },
   header: {
     alignItems: 'center',
@@ -2005,6 +2103,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
+    flexWrap: 'wrap',
+    maxWidth: '100%',
   },
   removeButton: {
     width: 32,
@@ -2025,36 +2125,43 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#10b981',
     borderStyle: 'dashed',
+    flexWrap: 'wrap',
+    maxWidth: '100%',
   },
   addMemberText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#10b981',
     marginLeft: 8,
+    flexWrap: 'wrap',
+    textAlign: 'center',
   },
   teamNote: {
-    backgroundColor: '#eff6ff',
+    marginTop: 8,
+    backgroundColor: '#f8fafc',
     borderRadius: 8,
     padding: 12,
-    marginTop: 12,
+    alignItems: 'center',
+  },
+  teamNoteDark: {
+    backgroundColor: '#23293a',
   },
   noteText: {
     fontSize: 14,
-    color: '#3b82f6',
+    color: '#64748b',
     textAlign: 'center',
   },
+  noteTextDark: {
+    color: '#e5e7eb',
+  },
   calculationCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#f8fafc',
     borderRadius: 12,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 3,
+    padding: 16,
+    marginBottom: 12,
+  },
+  calculationCardDark: {
+    backgroundColor: '#23293a',
   },
   calculationRow: {
     flexDirection: 'row',
@@ -2081,10 +2188,13 @@ const styles = StyleSheet.create({
     color: '#10b981',
   },
   scheduleInfo: {
-    marginTop: 16,
-    padding: 12,
     backgroundColor: '#f8fafc',
     borderRadius: 8,
+    padding: 12,
+    marginTop: 12,
+  },
+  scheduleInfoDark: {
+    backgroundColor: '#23293a',
   },
   scheduleLabel: {
     fontSize: 14,
@@ -2155,6 +2265,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 4,
+    maxWidth: '100%',
+    flexWrap: 'wrap',
+  },
+  saveButtonDark: {
+    backgroundColor: '#059669', // vert foncé pour dark mode
   },
   saveButtonText: {
     fontSize: 16,
@@ -2169,10 +2284,17 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#e5e7eb',
   },
+  secondaryButtonDark: {
+    backgroundColor: '#23293a',
+    borderColor: '#334155',
+  },
   secondaryButtonText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#6b7280',
+  },
+  secondaryButtonTextDark: {
+    color: '#e5e7eb',
   },
   modalOverlay: {
     flex: 1,
@@ -2238,13 +2360,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#f3f4f6',
   },
-  primaryModalButton: {
-    backgroundColor: '#3b82f6',
+  modalButtonDark: {
+    backgroundColor: '#23293a',
   },
   modalButtonText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#6b7280',
+  },
+  modalButtonTextDark: {
+    color: '#e5e7eb',
+  },
+  primaryModalButton: {
+    backgroundColor: '#3b82f6',
   },
   primaryModalButtonText: {
     fontSize: 16,
@@ -2252,11 +2380,67 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   modalContent: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
     padding: 24,
     width: '100%',
     maxWidth: 400,
+  },
+  modalContentDark: {
+    backgroundColor: '#23293a',
+    borderColor: '#334155',
+  },
+  modalHeader: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+    paddingTop: 8,
+    paddingBottom: 8,
+  },
+  modalHeaderDark: {
+    backgroundColor: '#23293a',
+    borderBottomColor: '#334155',
+  },
+  employeeCard: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    padding: 12,
+    marginBottom: 12,
+  },
+  employeeCardDark: {
+    backgroundColor: '#23293a',
+    borderColor: '#334155',
+  },
+  modalButton: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+    padding: 12,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  modalButtonDark: {
+    backgroundColor: '#23293a',
+    borderColor: '#334155',
+  },
+  modalButtonText: {
+    color: '#6b7280',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  modalButtonTextDark: {
+    color: '#e5e7eb',
   },
   conflictContent: {
     alignItems: 'center',
@@ -2334,6 +2518,18 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 6,
+    marginBottom: 4,
+    maxWidth: '80%',
+    width: 'auto',
+    alignSelf: 'flex-start',
+    flexShrink: 1,
+    flexDirection: 'column',
+    flexWrap: 'wrap',
+  },
+  employeeInfoDark: {
+    backgroundColor: '#23293a',
+    borderColor: '#10b981',
+    borderWidth: 1,
   },
   employeeInfoText: {
     fontSize: 14,
@@ -2657,5 +2853,42 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 6,
     elevation: 4,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1a1a1a',
+  },
+  closeButton: {
+    backgroundColor: '#f3f4f6',
+    borderRadius: 8,
+    padding: 12,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  closeButtonDark: {
+    backgroundColor: '#334155',
+  },
+  closeButtonText: {
+    color: '#6b7280',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  closeButtonTextDark: {
+    color: '#e5e7eb',
+  },
+  modalText: {
+    color: '#1a1a1a',
+  },
+  modalTextDark: {
+    color: '#e5e7eb',
   },
 });

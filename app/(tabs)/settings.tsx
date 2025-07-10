@@ -24,8 +24,10 @@ import {
   Save
 } from 'lucide-react-native';
 import { useNotifications, NotificationSettings } from '../../hooks/useNotifications';
+import { useTheme } from '../../contexts/ThemeContext';
 
 export default function SettingsTab() {
+  const { isDark, theme, setTheme } = useTheme();
   const {
     settings,
     saveNotificationSettings,
@@ -79,30 +81,71 @@ export default function SettingsTab() {
     );
   };
 
+  const handleThemeChange = (value: boolean) => {
+    setTheme(value ? 'dark' : 'light');
+  };
+
+  const handleAutoTheme = () => {
+    setTheme('auto');
+  };
+
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+    <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
+      <ScrollView style={styles.scrollView} contentContainerStyle={{flexGrow:1}} showsVerticalScrollIndicator={false}>
         {/* Header */}
-        <View style={styles.header}>
-          <Settings color="#3b82f6" size={32} strokeWidth={2} />
-          <Text style={styles.title}>Paramètres</Text>
-          <Text style={styles.subtitle}>Personnalisez votre expérience</Text>
+        <View style={[styles.header, isDark && styles.headerDark]}>
+          <Settings color={isDark ? "#60a5fa" : "#3b82f6"} size={32} strokeWidth={2} />
+          <Text style={[styles.title, isDark && styles.titleDark]}>Paramètres</Text>
+          <Text style={[styles.subtitle, isDark && styles.subtitleDark]}>Personnalisez votre expérience</Text>
+        </View>
+
+        {/* Thème */}
+        <View style={[styles.section, isDark && styles.sectionDark]}>
+          <View style={styles.sectionHeader}>
+            <Palette color={isDark ? "#60a5fa" : "#3b82f6"} size={24} strokeWidth={2} />
+            <Text style={[styles.sectionTitle, isDark && styles.sectionTitleDark]}>Apparence</Text>
+          </View>
+          
+          <View style={[styles.settingItem, isDark && styles.settingItemDark]}>
+            <View style={styles.settingInfo}>
+              <Moon color={isDark ? "#a1a1aa" : "#6b7280"} size={20} strokeWidth={2} />
+              <View style={styles.settingText}>
+                <Text style={[styles.settingLabel, isDark && styles.settingLabelDark]}>Mode sombre</Text>
+                <Text style={[styles.settingDescription, isDark && styles.settingDescriptionDark]}>
+                  Activer l'interface sombre
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={isDark}
+              onValueChange={handleThemeChange}
+              trackColor={{ false: '#e5e7eb', true: '#3b82f6' }}
+              thumbColor={isDark ? '#ffffff' : '#ffffff'}
+            />
+          </View>
+          
+          <TouchableOpacity onPress={handleAutoTheme} style={[styles.autoThemeButton, isDark && styles.autoThemeButtonDark]}>
+            <Smartphone color={isDark ? "#a1a1aa" : "#6b7280"} size={16} strokeWidth={2} />
+            <Text style={[styles.autoThemeText, isDark && styles.autoThemeTextDark]}>
+              {theme === 'auto' ? '✓ Défaut : suivre la préférence de l\'appareil' : 'Défaut : suivre la préférence de l\'appareil'}
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Notifications Section */}
-        <View style={styles.section}>
+        <View style={[styles.section, isDark && styles.sectionDark]}>
           <View style={styles.sectionHeader}>
-            <Bell color="#3b82f6" size={24} strokeWidth={2} />
-            <Text style={styles.sectionTitle}>Notifications</Text>
-            </View>
+            <Bell color={isDark ? "#60a5fa" : "#3b82f6"} size={24} strokeWidth={2} />
+            <Text style={[styles.sectionTitle, isDark && styles.sectionTitleDark]}>Notifications</Text>
+          </View>
 
           {/* Task Reminders */}
-          <View style={styles.settingItem}>
+          <View style={[styles.settingItem, isDark && styles.settingItemDark]}>
             <View style={styles.settingInfo}>
-              <Clock color="#6b7280" size={20} strokeWidth={2} />
+              <Clock color={isDark ? "#a1a1aa" : "#6b7280"} size={20} strokeWidth={2} />
               <View style={styles.settingText}>
-                <Text style={styles.settingLabel}>Rappels de tâches</Text>
-                <Text style={styles.settingDescription}>
+                <Text style={[styles.settingLabel, isDark && styles.settingLabelDark]}>Rappels de tâches</Text>
+                <Text style={[styles.settingDescription, isDark && styles.settingDescriptionDark]}>
                   Recevoir des rappels avant le début des tâches
                 </Text>
               </View>
@@ -116,12 +159,12 @@ export default function SettingsTab() {
           </View>
 
           {/* Conflict Alerts */}
-          <View style={styles.settingItem}>
+          <View style={[styles.settingItem, isDark && styles.settingItemDark]}>
             <View style={styles.settingInfo}>
-              <AlertTriangle color="#6b7280" size={20} strokeWidth={2} />
+              <AlertTriangle color={isDark ? "#a1a1aa" : "#6b7280"} size={20} strokeWidth={2} />
               <View style={styles.settingText}>
-                <Text style={styles.settingLabel}>Alertes de conflit</Text>
-                <Text style={styles.settingDescription}>
+                <Text style={[styles.settingLabel, isDark && styles.settingLabelDark]}>Alertes de conflit</Text>
+                <Text style={[styles.settingDescription, isDark && styles.settingDescriptionDark]}>
                   Être notifié des conflits de planning
                 </Text>
               </View>
@@ -135,12 +178,12 @@ export default function SettingsTab() {
         </View>
 
           {/* Employee Updates */}
-          <View style={styles.settingItem}>
+          <View style={[styles.settingItem, isDark && styles.settingItemDark]}>
             <View style={styles.settingInfo}>
-              <Users color="#6b7280" size={20} strokeWidth={2} />
+              <Users color={isDark ? "#a1a1aa" : "#6b7280"} size={20} strokeWidth={2} />
               <View style={styles.settingText}>
-                <Text style={styles.settingLabel}>Mises à jour employés</Text>
-                <Text style={styles.settingDescription}>
+                <Text style={[styles.settingLabel, isDark && styles.settingLabelDark]}>Mises à jour employés</Text>
+                <Text style={[styles.settingDescription, isDark && styles.settingDescriptionDark]}>
                   Notifications sur les changements d'équipe
                 </Text>
               </View>
@@ -154,12 +197,12 @@ export default function SettingsTab() {
           </View>
 
           {/* Reminder Time */}
-          <View style={styles.settingItem}>
+          <View style={[styles.settingItem, isDark && styles.settingItemDark]}>
             <View style={styles.settingInfo}>
-              <Clock color="#6b7280" size={20} strokeWidth={2} />
+              <Clock color={isDark ? "#a1a1aa" : "#6b7280"} size={20} strokeWidth={2} />
               <View style={styles.settingText}>
-                <Text style={styles.settingLabel}>Temps de rappel</Text>
-                <Text style={styles.settingDescription}>
+                <Text style={[styles.settingLabel, isDark && styles.settingLabelDark]}>Temps de rappel</Text>
+                <Text style={[styles.settingDescription, isDark && styles.settingDescriptionDark]}>
                   Minutes avant le début de la tâche
                 </Text>
               </View>
@@ -170,6 +213,7 @@ export default function SettingsTab() {
                   key={time}
                   style={[
                     styles.timeOption,
+                    isDark && styles.timeOptionDark,
                     localSettings.reminderTime === time && styles.selectedTimeOption,
                   ]}
                   onPress={() => handleSettingChange('reminderTime', time)}
@@ -177,6 +221,7 @@ export default function SettingsTab() {
                   <Text
                     style={[
                       styles.timeOptionText,
+                      isDark && styles.timeOptionTextDark,
                       localSettings.reminderTime === time && styles.selectedTimeText,
                     ]}
                   >
@@ -188,9 +233,9 @@ export default function SettingsTab() {
           </View>
 
           {/* Notifications Info */}
-          <View style={styles.infoCard}>
-            <Text style={styles.infoTitle}>📱 Notifications programmées</Text>
-            <Text style={styles.infoText}>
+          <View style={[styles.infoCard, isDark && styles.infoCardDark]}>
+            <Text style={[styles.infoTitle, isDark && styles.infoTitleDark]}>📱 Notifications programmées</Text>
+            <Text style={[styles.infoText, isDark && styles.infoTextDark]}>
               {scheduledCount} notification{scheduledCount > 1 ? 's' : ''} en attente
             </Text>
             {scheduledCount > 0 && (
@@ -203,7 +248,7 @@ export default function SettingsTab() {
 
         {/* Save Button */}
         <View style={styles.actionSection}>
-          <TouchableOpacity style={styles.saveButton} onPress={saveSettings}>
+          <TouchableOpacity style={[styles.saveButton, isDark && styles.saveButtonDark]} onPress={saveSettings}>
             <Save color="#ffffff" size={20} strokeWidth={2} />
             <Text style={styles.saveButtonText}>Sauvegarder les paramètres</Text>
           </TouchableOpacity>
@@ -218,6 +263,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f8fafc',
   },
+  containerDark: {
+    backgroundColor: '#18181b',
+  },
   scrollView: {
     flex: 1,
   },
@@ -229,16 +277,26 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#e5e7eb',
   },
+  headerDark: {
+    backgroundColor: '#27272a',
+    borderBottomColor: '#3f3f46',
+  },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
     color: '#1a1a1a',
     marginTop: 12,
   },
+  titleDark: {
+    color: '#ffffff',
+  },
   subtitle: {
     fontSize: 16,
     color: '#6b7280',
     marginTop: 4,
+  },
+  subtitleDark: {
+    color: '#a1a1aa',
   },
   section: {
     backgroundColor: '#ffffff',
@@ -252,6 +310,9 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
+  sectionDark: {
+    backgroundColor: '#27272a',
+  },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -263,6 +324,9 @@ const styles = StyleSheet.create({
     color: '#1a1a1a',
     marginLeft: 12,
   },
+  sectionTitleDark: {
+    color: '#ffffff',
+  },
   settingItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -270,6 +334,9 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#f3f4f6',
+  },
+  settingItemDark: {
+    borderBottomColor: '#3f3f46',
   },
   settingInfo: {
     flexDirection: 'row',
@@ -285,10 +352,37 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1a1a1a',
   },
+  settingLabelDark: {
+    color: '#ffffff',
+  },
   settingDescription: {
     fontSize: 14,
     color: '#6b7280',
     marginTop: 2,
+  },
+  settingDescriptionDark: {
+    color: '#a1a1aa',
+  },
+  autoThemeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#f8fafc',
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  autoThemeButtonDark: {
+    backgroundColor: '#18181b',
+  },
+  autoThemeText: {
+    fontSize: 12,
+    color: '#6b7280',
+    fontStyle: 'italic',
+    marginLeft: 8,
+  },
+  autoThemeTextDark: {
+    color: '#a1a1aa',
   },
   timeSelector: {
     flexDirection: 'row',
@@ -302,6 +396,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e5e7eb',
   },
+  timeOptionDark: {
+    backgroundColor: '#3f3f46',
+    borderColor: '#52525b',
+  },
   selectedTimeOption: {
     backgroundColor: '#3b82f6',
     borderColor: '#3b82f6',
@@ -310,6 +408,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     color: '#6b7280',
+  },
+  timeOptionTextDark: {
+    color: '#a1a1aa',
   },
   selectedTimeText: {
     color: '#ffffff',
@@ -322,16 +423,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#0ea5e9',
   },
+  infoCardDark: {
+    backgroundColor: '#1e293b',
+    borderColor: '#0284c7',
+  },
   infoTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#0c4a6e',
     marginBottom: 4,
   },
+  infoTitleDark: {
+    color: '#38bdf8',
+  },
   infoText: {
     fontSize: 14,
     color: '#0369a1',
     marginBottom: 12,
+  },
+  infoTextDark: {
+    color: '#7dd3fc',
   },
   clearButton: {
     backgroundColor: '#ef4444',
@@ -361,6 +472,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 6,
+  },
+  saveButtonDark: {
+    backgroundColor: '#2563eb',
   },
   saveButtonText: {
     color: '#ffffff',

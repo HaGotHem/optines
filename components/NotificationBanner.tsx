@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   Animated,
   TouchableOpacity,
   Dimensions,
+  Platform,
 } from 'react-native';
 import { X, Bell, AlertTriangle, Clock, Users } from 'lucide-react-native';
 import { useNotifications } from '../hooks/useNotifications';
@@ -20,6 +21,33 @@ export const NotificationBanner: React.FC<NotificationBannerProps> = ({ onClose 
   const { notification } = useNotifications();
   const slideAnim = useRef(new Animated.Value(-100)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
+  // Toujours appeler le hook, mais initialiser selon la plateforme
+  const [showWebInfo, setShowWebInfo] = useState(() => Platform.OS === 'web');
+  // Ajout pour l'animation web
+  const webOpacity = useRef(new Animated.Value(1)).current;
+  const webTranslateY = useRef(new Animated.Value(0)).current;
+
+  // Affichage d'un message d'information sur le web (temporaire 3s)
+  useEffect(() => {
+    if (Platform.OS === 'web' && showWebInfo) {
+      // Lancer l'animation de fade + slide up après 2.5s
+      const timer = setTimeout(() => {
+        Animated.parallel([
+          Animated.timing(webOpacity, {
+            toValue: 0,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+          Animated.timing(webTranslateY, {
+            toValue: -40,
+            duration: 500,
+            useNativeDriver: true,
+          })
+        ]).start(() => setShowWebInfo(false));
+      }, 2500);
+      return () => clearTimeout(timer);
+    }
+  }, [showWebInfo]);
 
   useEffect(() => {
     if (notification) {
@@ -44,7 +72,7 @@ export const NotificationBanner: React.FC<NotificationBannerProps> = ({ onClose 
 
       return () => clearTimeout(timer);
     }
-  }, [notification]);
+  }, []);
 
   const hideNotification = () => {
     Animated.parallel([
@@ -95,36 +123,58 @@ export const NotificationBanner: React.FC<NotificationBannerProps> = ({ onClose 
     }
   };
 
-  if (!notification) return null;
-
+  // Toujours rendre le composant, masquer le message si besoin
   return (
-    <Animated.View
-      style={[
-        styles.container,
-        {
-          backgroundColor: getNotificationColor(),
-          transform: [{ translateY: slideAnim }],
-          opacity: opacityAnim,
-        },
-      ]}
-    >
-      <View style={styles.content}>
-        <View style={styles.iconContainer}>
-          {getNotificationIcon()}
-        </View>
-        <View style={styles.textContainer}>
-          <Text style={styles.title} numberOfLines={1}>
-            {notification.request.content.title}
+    <>
+      {Platform.OS === 'web' && (
+        <Animated.View style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 1000,
+          backgroundColor: '#f59e0b',
+          padding: 16,
+          alignItems: 'center',
+          display: showWebInfo ? 'flex' : 'none',
+          opacity: webOpacity,
+          transform: [{ translateY: webTranslateY }],
+        }}>
+          <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>
+            Les notifications push ne sont pas supportées sur le web.
           </Text>
-          <Text style={styles.body} numberOfLines={2}>
-            {notification.request.content.body}
-          </Text>
-        </View>
-        <TouchableOpacity style={styles.closeButton} onPress={hideNotification}>
-          <X color="#ffffff" size={20} strokeWidth={2} />
-        </TouchableOpacity>
-      </View>
-    </Animated.View>
+        </Animated.View>
+      )}
+      {Platform.OS !== 'web' && notification && (
+        <Animated.View
+          style={[
+            styles.container,
+            {
+              backgroundColor: getNotificationColor(),
+              transform: [{ translateY: slideAnim }],
+              opacity: opacityAnim,
+            },
+          ]}
+        >
+          <View style={styles.content}>
+            <View style={styles.iconContainer}>
+              {getNotificationIcon()}
+            </View>
+            <View style={styles.textContainer}>
+              <Text style={styles.title} numberOfLines={1}>
+                {notification.request.content.title}
+              </Text>
+              <Text style={styles.body} numberOfLines={2}>
+                {notification.request.content.body}
+              </Text>
+            </View>
+            <TouchableOpacity style={styles.closeButton} onPress={hideNotification}>
+              <X color="#ffffff" size={20} strokeWidth={2} />
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+      )}
+    </>
   );
 };
 
@@ -150,7 +200,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
     borderRadius: 12,
     padding: 16,
-    backdropFilter: 'blur(10px)',
   },
   iconContainer: {
     width: 40,

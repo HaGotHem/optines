@@ -4,11 +4,16 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "start": "node server.js",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
     "dev": "expo start",
-    "build:web": "expo export --platform web",
-    "lint": "expo lint",
-    "android": "expo run:android",
-    "ios": "expo run:ios"
+    "setup-supabase": "node setup-supabase.js",
+    "update-schema": "node scripts/update-schema.js",
+    "dev-panel": "echo 'Panel Développeur disponible à: http://localhost:19006/developer' && npm run dev",
+    "test-api": "node -e \"fetch('http://localhost:3001/api/health').then(r=>r.json()).then(console.log).catch(e=>console.log('API non disponible'))\"",
+    "test": "jest"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.1.0",
@@ -17,11 +22,17 @@
     "@react-native-picker/picker": "^2.11.1",
     "@react-navigation/bottom-tabs": "^7.2.0",
     "@react-navigation/native": "^7.0.14",
+    "@rneui/themed": "^4.0.0-rc.8",
+    "@supabase/supabase-js": "^2.50.3",
+    "cors": "^2.8.5",
+    "dotenv": "^17.0.1",
     "expo": "^53.0.17",
     "expo-blur": "~14.1.5",
     "expo-camera": "~16.1.10",
     "expo-constants": "~17.1.3",
+    "expo-crypto": "^14.1.5",
     "expo-device": "~7.1.4",
+    "expo-file-system": "~18.1.11",
     "expo-font": "~13.3.2",
     "expo-haptics": "~14.1.4",
     "expo-image-picker": "^16.1.4",
@@ -34,7 +45,10 @@
     "expo-symbols": "~0.4.5",
     "expo-system-ui": "~5.0.10",
     "expo-web-browser": "~14.2.0",
+    "express": "^4.21.2",
     "lucide-react-native": "^0.475.0",
+    "node-fetch": "^3.3.2",
+    "postgres": "^3.4.7",
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "react-native": "0.79.5",
@@ -48,9 +62,10 @@
     "react-native-webview": "13.13.5"
   },
   "devDependencies": {
-    "@babel/core": "^7.25.2",
+    "@babel/core": "^7.24.0",
     "@types/react": "~19.0.10",
     "babel-plugin-module-resolver": "^5.0.2",
+    "cross-env": "^7.0.3",
     "typescript": "~5.8.3"
   }
 }

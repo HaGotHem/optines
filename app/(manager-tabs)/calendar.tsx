@@ -13,29 +13,17 @@ import {
   Switch,
   Image,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Calendar as CalendarIcon, Clock, Plus, MapPin, Package, Users, Trash2, ChevronLeft, ChevronRight, X, Edit3, Check, Pin, PinOff, Bell, BellOff } from 'lucide-react-native';
 import { Swipeable, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { router } from 'expo-router';
 import { notificationService } from '../../services/NotificationService';
 import DatePickerCalendar from '../../components/DatePickerCalendar';
-
-interface ScheduledTask {
-  id: string;
-  title: string;
-  startTime: string;
-  endTime: string;
-  duration: string;
-  date: string;
-  packages: number;
-  teamSize: number;
-  managerSection: string;
-  managerInitials: string;
-  paletteCondition: boolean;
-  teamMembers?: number[]; // IDs des membres de l'équipe
-  isPinned?: boolean;
-  isCompleted?: boolean;
-}
+import { useSupabaseTasks } from '../../hooks/useSupabaseTasks';
+import { useSupabaseTeam } from '../../hooks/useSupabaseTeam';
+import { useSupabaseAuth } from '../../hooks/useSupabaseAuth';
+import { useTheme } from '../../contexts/ThemeContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ScheduledTask } from '../../types/database';
 
 interface Event {
   id: number;
@@ -57,7 +45,7 @@ interface TeamMember {
   id: number;
   name: string;
   role?: string;
-  avatar?: string;
+  avatar_url?: string | null;
 }
 
 interface SmartReminder {
@@ -74,9 +62,9 @@ interface SmartReminder {
 }
 
 export default function CalendarTab() {
+  const { isDark } = useTheme();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [currentWeek, setCurrentWeek] = useState(0);
-  const [scheduledTasks, setScheduledTasks] = useState<ScheduledTask[]>([]);
   const [showEventModal, setShowEventModal] = useState(false);
   const [showWorkingHoursModal, setShowWorkingHoursModal] = useState(false);
   const [showEditTaskModal, setShowEditTaskModal] = useState(false);
@@ -131,7 +119,6 @@ export default function CalendarTab() {
 
   // États pour la sélection d'employés
   const [showEmployeeSelector, setShowEmployeeSelector] = useState(false);
-  const [allEmployees, setAllEmployees] = useState<TeamMember[]>([]);
   const [editTeamMembers, setEditTeamMembers] = useState<TeamMember[]>([]);
   const [assignedEmployeeIds, setAssignedEmployeeIds] = useState<number[]>([]);
 
@@ -143,6 +130,26 @@ export default function CalendarTab() {
   const datePickerScale = useRef(new Animated.Value(0.9)).current;
   const remindersModalOpacity = useRef(new Animated.Value(0)).current;
   const remindersModalScale = useRef(new Animated.Value(0.8)).current;
+
+  // Hooks Supabase
+  const { user } = useSupabaseAuth();
+  const { 
+    tasks: scheduledTasks, 
+    isLoading: tasksLoading,
+    createTask,
+    updateTask,
+    deleteTask: deleteTaskFromDB,
+    getTasksByDate,
+    toggleTaskPin,
+    toggleTaskComplete
+  } = useSupabaseTasks({ 
+    managerId: user?.app_metadata?.user_id?.toString() 
+  });
+
+  const { 
+    members: allEmployees,
+    isLoading: employeesLoading 
+  } = useSupabaseTeam(user?.app_metadata?.user_id?.toString());
 
   // Événements en état pour permettre la modification
   const [events, setEvents] = useState<Event[]>([
@@ -169,44 +176,16 @@ export default function CalendarTab() {
   ]);
 
   useEffect(() => {
-    // Load scheduled tasks from AsyncStorage
-    const loadTasks = async () => {
-      try {
-        const tasksString = await AsyncStorage.getItem('scheduledTasks');
-        console.log('Loading tasks from storage:', tasksString);
-        if (tasksString) {
-          const tasks = JSON.parse(tasksString);
-          console.log('Parsed tasks:', tasks);
-          setScheduledTasks(tasks);
-          
-          // Animation d'entrée pour les nouvelles tâches
-          if (tasks.length > 0) {
-            slideAnimation.setValue(50);
-            Animated.timing(slideAnimation, {
-              toValue: 0,
-              duration: 400,
-              useNativeDriver: true,
-            }).start();
-          }
-        } else {
-          console.log('No tasks found in storage');
-          setScheduledTasks([]);
-        }
-      } catch (error) {
-        console.error('Error loading tasks:', error);
-        setScheduledTasks([]);
-      }
-    };
-
-    loadTasks();
-    
-    // Check periodically for updates
-    const interval = setInterval(loadTasks, 2000);
-
-    return () => {
-      clearInterval(interval);
-    };
-  }, []);
+    // Animation d'entrée pour les nouvelles tâches
+    if (scheduledTasks.length > 0) {
+      slideAnimation.setValue(50);
+      Animated.timing(slideAnimation, {
+        toValue: 0,
+        duration: 400,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [scheduledTasks, slideAnimation]);
 
   // Charger les heures de travail au démarrage
   useEffect(() => {
@@ -236,7 +215,6 @@ export default function CalendarTab() {
         const savedTeam = await AsyncStorage.getItem('teamMembers');
         if (savedTeam) {
           const employees = JSON.parse(savedTeam);
-          setAllEmployees(employees);
           console.log('All employees loaded:', employees);
         }
       } catch (error) {
@@ -265,23 +243,21 @@ export default function CalendarTab() {
     try {
       // Suppression immédiate de l'état local
       const updatedTasks = scheduledTasks.filter(task => task.id !== taskId);
-      setScheduledTasks(updatedTasks);
+      console.log('Task deleted successfully:', taskId, taskToDelete.title);
       
       // Sauvegarde dans AsyncStorage
       await AsyncStorage.setItem('scheduledTasks', JSON.stringify(updatedTasks));
-      
-      console.log('Task deleted successfully:', taskId, taskToDelete.title);
       
       // Feedback visuel
       Alert.alert('Succès', `Tâche "${taskToDelete.title}" supprimée`);
     } catch (error) {
       console.error('Error deleting task:', error);
       
-      // Restaurer l'état en cas d'erreur
-      const tasksString = await AsyncStorage.getItem('scheduledTasks');
-      if (tasksString) {
-        setScheduledTasks(JSON.parse(tasksString));
-      }
+              // Restaurer l'état en cas d'erreur
+        const tasksString = await AsyncStorage.getItem('scheduledTasks');
+        if (tasksString) {
+          console.log('Error restoring tasks');
+        }
       
       Alert.alert('Erreur', 'Impossible de supprimer la tâche');
     }
@@ -291,14 +267,14 @@ export default function CalendarTab() {
     setEditingTask(task);
     setEditPackages(task.packages.toString());
     setEditDate(new Date(task.date));
-    setEditStartTime(task.startTime);
+    setEditStartTime(task.start_time);
     setEditDelay('0');
-    setEditPaletteCondition(task.paletteCondition);
+    setEditPaletteCondition(task.palette_condition);
     
     // Initialiser les membres de l'équipe pour l'édition
-    if (task.teamMembers && allEmployees.length > 0) {
+    if (task.team_members && allEmployees.length > 0) {
       const taskEmployees = allEmployees.filter(employee => 
-        task.teamMembers!.includes(employee.id)
+        task.team_members!.includes(employee.id)
       );
       setEditTeamMembers(taskEmployees);
     } else {
@@ -429,8 +405,8 @@ export default function CalendarTab() {
               startTime: editStartTime,
               endTime: newEndTime,
               duration: formattedDuration,
-              paletteCondition: editPaletteCondition,
-              teamMembers: editTeamMembers.map(member => member.id) // Inclure les IDs des membres (peut être vide)
+              palette_condition: editPaletteCondition,
+              team_members: editTeamMembers.map(member => member.id) // Inclure les IDs des membres (peut être vide)
             }
           : task
       );
@@ -527,12 +503,12 @@ export default function CalendarTab() {
     // Trier les tâches : épinglées d'abord, puis par heure de début
     return tasksForDate.sort((a, b) => {
       // Les tâches épinglées en premier
-      if (a.isPinned && !b.isPinned) return -1;
-      if (!a.isPinned && b.isPinned) return 1;
+      if (a.is_pinned && !b.is_pinned) return -1;
+      if (!a.is_pinned && b.is_pinned) return 1;
       
       // Puis par heure de début
-      const timeA = parseInt(a.startTime.split(':')[0]) * 60 + parseInt(a.startTime.split(':')[1]);
-      const timeB = parseInt(b.startTime.split(':')[0]) * 60 + parseInt(b.startTime.split(':')[1]);
+      const timeA = parseInt(a.start_time.split(':')[0]) * 60 + parseInt(a.start_time.split(':')[1]);
+      const timeB = parseInt(b.start_time.split(':')[0]) * 60 + parseInt(b.start_time.split(':')[1]);
       return timeA - timeB;
     });
   };
@@ -636,12 +612,12 @@ export default function CalendarTab() {
 
     // Obtenir les employés assignés à cette tâche
     const getTaskEmployees = () => {
-      if (!task.teamMembers || !allEmployees.length) {
+      if (!task.team_members || !allEmployees.length) {
         return [];
       }
       
       return allEmployees.filter(employee => 
-        task.teamMembers!.includes(employee.id)
+        task.team_members!.includes(employee.id)
       );
     };
 
@@ -671,7 +647,7 @@ export default function CalendarTab() {
         <TouchableOpacity
           style={[styles.swipeAction, styles.swipeDelete]}
           onPress={() => {
-            if (task.isCompleted) {
+            if (task.is_completed) {
               onDelete(task.id);
             } else {
               Alert.alert('Action requise', 'Vous devez d\'abord marquer cette tâche comme terminée avant de pouvoir la supprimer.');
@@ -690,13 +666,13 @@ export default function CalendarTab() {
           style={[styles.swipeAction, styles.swipePin]}
           onPress={() => togglePinTask(task.id)}
         >
-          {task.isPinned ? (
+          {task.is_pinned ? (
             <PinOff color="#fff" size={20} strokeWidth={2} />
           ) : (
             <Pin color="#fff" size={20} strokeWidth={2} />
           )}
           <Text style={styles.swipeActionText}>
-            {task.isPinned ? 'Désépingler' : 'Épingler'}
+            {task.is_pinned ? 'Désépingler' : 'Épingler'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -722,12 +698,12 @@ export default function CalendarTab() {
           ]}
         >
           {/* Indicateurs visuels */}
-          {task.isPinned && (
+          {task.is_pinned && (
             <View style={styles.pinIndicator}>
               <Pin color="#f59e0b" size={16} strokeWidth={2} />
             </View>
           )}
-          {task.isCompleted && (
+          {task.is_completed && (
             <View style={styles.completedIndicator}>
               <Check color="#10b981" size={16} strokeWidth={2} />
             </View>
@@ -750,7 +726,7 @@ export default function CalendarTab() {
                   onPress={() => toggleCompleteTask(task.id)}
                   activeOpacity={0.7}
                 >
-                  <Check color={task.isCompleted ? "#10b981" : "#6b7280"} size={16} strokeWidth={2} />
+                  <Check color={task.is_completed ? "#10b981" : "#6b7280"} size={16} strokeWidth={2} />
                 </TouchableOpacity>
                 <TouchableOpacity 
                   style={styles.editButton}
@@ -773,7 +749,7 @@ export default function CalendarTab() {
               <View style={styles.taskDetailRow}>
                 <Clock color="#6b7280" size={16} strokeWidth={2} />
                 <Text style={styles.taskDetailText}>
-                  {task.startTime} - {task.endTime} ({task.duration})
+                  {task.start_time} - {task.end_time} ({task.duration})
                 </Text>
               </View>
               
@@ -791,8 +767,8 @@ export default function CalendarTab() {
                     <View style={styles.teamMembersList}>
                       {taskEmployees.slice(0, 3).map((employee, index) => (
                         <View key={employee.id} style={styles.employeeAvatarContainer}>
-                          {employee.avatar ? (
-                            <Image source={{ uri: employee.avatar }} style={styles.employeeAvatar} />
+                          {employee.avatar_url ? (
+                            <Image source={{ uri: employee.avatar_url }} style={styles.employeeAvatar} />
                           ) : (
                             <View style={styles.employeeAvatarPlaceholder}>
                               <Users color="#3b82f6" size={12} strokeWidth={2} />
@@ -808,7 +784,7 @@ export default function CalendarTab() {
                     </View>
                   ) : (
                     <Text style={styles.taskDetailText}>
-                      {task.teamSize} membre{task.teamSize > 1 ? 's' : ''} d'équipe
+                      {task.team_size} membre{task.team_size > 1 ? 's' : ''} d'équipe
                     </Text>
                   )}
                 </View>
@@ -817,7 +793,7 @@ export default function CalendarTab() {
               <View style={styles.taskDetailRow}>
                 <MapPin color="#6b7280" size={16} strokeWidth={2} />
                 <Text style={styles.taskDetailText}>
-                  Rayon {task.managerSection}
+                  Rayon {task.manager_section}
                 </Text>
               </View>
             </View>
@@ -1034,8 +1010,8 @@ export default function CalendarTab() {
           continue;
         }
         
-        const existingStart = task.startTime;
-        const existingEnd = task.endTime;
+        const existingStart = task.start_time;
+        const existingEnd = task.end_time;
         
         const newStartMinutes = parseInt(newTaskStart.split(':')[0]) * 60 + parseInt(newTaskStart.split(':')[1]);
         const newEndMinutes = parseInt(newTaskEnd.split(':')[0]) * 60 + parseInt(newTaskEnd.split(':')[1]);
@@ -1049,11 +1025,11 @@ export default function CalendarTab() {
         );
         
         // Vérifier si l'employé est dans cette tâche
-        const isInTask = task.teamMembers && task.teamMembers.includes(employeeId);
+        const isInTask = task.team_members && task.team_members.includes(employeeId);
         
-        // Ne pas considérer les anciennes tâches sans teamMembers comme des conflits
+        // Ne pas considérer les anciennes tâches sans team_members comme des conflits
         // car on ne peut pas savoir qui était assigné et on veut permettre l'assignation
-        const isLegacyTask = !task.teamMembers;
+        const isLegacyTask = !task.team_members;
         
         // Vérifier les conflits pour les tâches avec des employés explicitement assignés
         if (hasConflict && isInTask) {
@@ -1251,7 +1227,7 @@ export default function CalendarTab() {
     try {
       const updatedTasks = scheduledTasks.map(task => 
         task.id === taskId 
-          ? { ...task, isPinned: !task.isPinned }
+          ? { ...task, is_pinned: !task.is_pinned }
           : task
       );
       setScheduledTasks(updatedTasks);
@@ -1265,7 +1241,7 @@ export default function CalendarTab() {
     try {
       const updatedTasks = scheduledTasks.map(task => 
         task.id === taskId 
-          ? { ...task, isCompleted: !task.isCompleted }
+          ? { ...task, is_completed: !task.is_completed }
           : task
       );
       setScheduledTasks(updatedTasks);
@@ -1277,19 +1253,29 @@ export default function CalendarTab() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaView style={styles.container}>
-        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
+        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={styles.header}>
-          <CalendarIcon color="#3b82f6" size={32} strokeWidth={2} />
-          <Text style={styles.title}>Planning Rayon</Text>
-          <Text style={styles.subtitle}>Organisez vos activités et tâches (7j/7)</Text>
+          <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 16 }}>
+            <ChevronLeft color={isDark ? '#f4f4f5' : '#1a1a1a'} size={28} strokeWidth={2} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, isDark && styles.headerTitleDark]}>Planning Rayon</Text>
+          <TouchableOpacity 
+            style={[styles.workingHoursButton, isDark && styles.workingHoursButtonDark]}
+            onPress={() => setShowWorkingHoursModal(true)}
+          >
+            <Clock color={isDark ? "#a1a1aa" : "#6b7280"} size={20} strokeWidth={2} />
+            <Text style={[styles.workingHoursText, isDark && styles.workingHoursTextDark]}>
+              {workingHours.start} - {workingHours.end}
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Working Hours Display */}
         <View style={styles.section}>
           <TouchableOpacity 
-            style={styles.workingHoursCard}
+            style={[styles.workingHoursCard, isDark && styles.workingHoursCardDark]}
             onPress={() => {
               setTempWorkingHours(workingHours);
               setShowWorkingHoursModal(true);
@@ -1326,7 +1312,7 @@ export default function CalendarTab() {
           </View>
 
           {/* Week Carousel - 7 days */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.weekContainer}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.weekContainer} contentContainerStyle={styles.weekContainerContent}>
             {weekDates.map((date, index) => {
               const dayTasks = scheduledTasks.filter(task => task.date === date.toISOString().split('T')[0]);
               return (
@@ -1395,7 +1381,7 @@ export default function CalendarTab() {
             {tasksForSelectedDate.map((task, index) => (
               <TaskCard
                 key={task.id}
-                task={task}
+                task={{...task, duration: task.duration || '1h'} as ScheduledTask}
                 onDelete={deleteTask}
                 onEdit={editTask}
               />
@@ -1422,7 +1408,7 @@ export default function CalendarTab() {
               return timeA - timeB;
             })
             .map((event) => (
-            <View key={event.id} style={styles.eventCard}>
+            <View key={event.id} style={[styles.eventCard, isDark && styles.eventCardDark]}>
               <View 
                 style={[
                   styles.eventIndicator, 
@@ -1468,7 +1454,7 @@ export default function CalendarTab() {
           <Text style={styles.sectionTitle}>Actions rapides</Text>
           
           <TouchableOpacity 
-            style={styles.actionCard}
+            style={[styles.actionCard, isDark && styles.actionCardDark]}
             onPress={() => setShowEventModal(true)}
           >
             <View style={[styles.actionIcon, { backgroundColor: '#eff6ff' }]}>
@@ -1478,7 +1464,7 @@ export default function CalendarTab() {
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={styles.actionCard}
+            style={[styles.actionCard, isDark && styles.actionCardDark]}
             onPress={() => router.push('/(manager-tabs)/calculator')}
           >
             <View style={[styles.actionIcon, { backgroundColor: '#f0fdf4' }]}>
@@ -1488,7 +1474,7 @@ export default function CalendarTab() {
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={styles.actionCard}
+            style={[styles.actionCard, isDark && styles.actionCardDark]}
             onPress={() => {
               setTempWorkingHours(workingHours);
               setShowWorkingHoursModal(true);
@@ -1510,7 +1496,7 @@ export default function CalendarTab() {
         onRequestClose={() => setShowWorkingHoursModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, isDark && styles.modalContentDark]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Heures de travail</Text>
               <TouchableOpacity onPress={() => setShowWorkingHoursModal(false)}>
@@ -1521,18 +1507,20 @@ export default function CalendarTab() {
             <View style={styles.timePickerContainer}>
               <View style={styles.timePickerSection}>
                 <Text style={styles.timePickerLabel}>Heure de début</Text>
-                <ScrollView style={styles.timePickerScroll} showsVerticalScrollIndicator={false}>
+                <ScrollView style={styles.timePickerScroll} contentContainerStyle={styles.timePickerScrollContent} showsVerticalScrollIndicator={false}>
                   {timeSlots.map((time) => (
                     <TouchableOpacity
                       key={`start-${time}`}
                       style={[
                         styles.timeOption,
+                        isDark && styles.timeOptionDark,
                         tempWorkingHours.start === time && styles.selectedTimeOption
                       ]}
                       onPress={() => setTempWorkingHours({...tempWorkingHours, start: time})}
                     >
                       <Text style={[
                         styles.timeOptionText,
+                        isDark && styles.timeOptionTextDark,
                         tempWorkingHours.start === time && styles.selectedTimeText
                       ]}>
                         {time}
@@ -1544,18 +1532,20 @@ export default function CalendarTab() {
 
               <View style={styles.timePickerSection}>
                 <Text style={styles.timePickerLabel}>Heure de fin</Text>
-                <ScrollView style={styles.timePickerScroll} showsVerticalScrollIndicator={false}>
+                <ScrollView style={styles.timePickerScroll} contentContainerStyle={styles.timePickerScrollContent} showsVerticalScrollIndicator={false}>
                   {timeSlots.map((time) => (
                     <TouchableOpacity
                       key={`end-${time}`}
                       style={[
                         styles.timeOption,
+                        isDark && styles.timeOptionDark,
                         tempWorkingHours.end === time && styles.selectedTimeOption
                       ]}
                       onPress={() => setTempWorkingHours({...tempWorkingHours, end: time})}
                     >
                       <Text style={[
                         styles.timeOptionText,
+                        isDark && styles.timeOptionTextDark,
                         tempWorkingHours.end === time && styles.selectedTimeText
                       ]}>
                         {time}
@@ -1568,13 +1558,13 @@ export default function CalendarTab() {
 
             <View style={styles.modalActions}>
               <TouchableOpacity 
-                style={styles.modalButton}
+                style={[styles.modalButton, isDark && styles.modalButtonDark]}
                 onPress={() => setShowWorkingHoursModal(false)}
               >
                 <Text style={styles.modalButtonText}>Annuler</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={[styles.modalButton, styles.primaryButton]}
+                style={[styles.modalButton, styles.primaryButton, isDark && styles.primaryButtonDark]}
                 onPress={saveWorkingHours}
               >
                 <Text style={styles.primaryButtonText}>Sauvegarder</Text>
@@ -1592,7 +1582,7 @@ export default function CalendarTab() {
         onRequestClose={() => setShowEventModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, isDark && styles.modalContentDark]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Nouvel événement</Text>
               <TouchableOpacity onPress={() => setShowEventModal(false)}>
@@ -1601,9 +1591,9 @@ export default function CalendarTab() {
             </View>
 
             <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Titre *</Text>
+              <Text style={[styles.inputLabel, isDark && styles.inputLabelDark]}>Titre *</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, isDark && styles.inputDark]}
                 value={eventTitle}
                 onChangeText={setEventTitle}
                 placeholder="Ex: Réunion équipe"
@@ -1612,13 +1602,13 @@ export default function CalendarTab() {
             </View>
 
             <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Date *</Text>
+              <Text style={[styles.inputLabel, isDark && styles.inputLabelDark]}>Date *</Text>
               <TouchableOpacity 
-                style={styles.dateSelector}
+                style={[styles.dateSelector, isDark && styles.dateSelectorDark]}
                 onPress={openEventDatePicker}
               >
                 <CalendarIcon color="#3b82f6" size={20} strokeWidth={2} />
-                <Text style={styles.dateText}>
+                <Text style={[styles.dateText, isDark && styles.dateTextDark]}>
                   {eventDate.toLocaleDateString('fr-FR', {
                     weekday: 'long',
                     year: 'numeric',
@@ -1630,22 +1620,22 @@ export default function CalendarTab() {
             </View>
 
             <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Heure de début *</Text>
+              <Text style={[styles.inputLabel, isDark && styles.inputLabelDark]}>Heure de début *</Text>
               <TouchableOpacity 
-                style={styles.dateSelector}
+                style={[styles.dateSelector, isDark && styles.dateSelectorDark]}
                 onPress={openAddEventTimePicker}
               >
                 <Clock color="#3b82f6" size={20} strokeWidth={2} />
-                <Text style={styles.dateText}>
+                <Text style={[styles.dateText, isDark && styles.dateTextDark]}>
                   {eventTime || 'Sélectionner une heure'}
                 </Text>
               </TouchableOpacity>
             </View>
 
             <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Lieu</Text>
+              <Text style={[styles.inputLabel, isDark && styles.inputLabelDark]}>Lieu</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, isDark && styles.inputDark]}
                 value={eventLocation}
                 onChangeText={setEventLocation}
                 placeholder="Ex: Salle de pause"
@@ -1655,13 +1645,13 @@ export default function CalendarTab() {
 
             <View style={styles.modalActions}>
               <TouchableOpacity 
-                style={styles.modalButton}
+                style={[styles.modalButton, isDark && styles.modalButtonDark]}
                 onPress={() => setShowEventModal(false)}
               >
                 <Text style={styles.modalButtonText}>Annuler</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={[styles.modalButton, styles.primaryButton]}
+                style={[styles.modalButton, styles.primaryButton, isDark && styles.primaryButtonDark]}
                 onPress={addEvent}
               >
                 <Text style={styles.primaryButtonText}>Ajouter</Text>
@@ -1702,7 +1692,7 @@ export default function CalendarTab() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalScrollView} showsVerticalScrollIndicator={false}>
+            <ScrollView style={styles.modalScrollView} contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
               {editingTask && (
                 <>
                   <View style={styles.inputContainer}>
@@ -1713,7 +1703,7 @@ export default function CalendarTab() {
                   <View style={styles.inputContainer}>
                     <Text style={styles.inputLabel}>Nombre de colis *</Text>
                     <TextInput
-                      style={styles.input}
+                      style={[styles.input, isDark && styles.inputDark]}
                       value={editPackages}
                       onChangeText={setEditPackages}
                       placeholder="Ex: 150"
@@ -1739,8 +1729,8 @@ export default function CalendarTab() {
                     {editTeamMembers.map((member, index) => (
                       <View key={member.id} style={styles.memberCard}>
                         <View style={styles.memberInfo}>
-                          {member.avatar ? (
-                            <Image source={{ uri: member.avatar }} style={styles.memberAvatar} />
+                          {member.avatar_url ? (
+                            <Image source={{ uri: member.avatar_url }} style={styles.memberAvatar} />
                           ) : (
                             <View style={styles.memberAvatarPlaceholder}>
                               <Users color="#3b82f6" size={20} strokeWidth={2} />
@@ -1825,7 +1815,7 @@ export default function CalendarTab() {
                     <Text style={styles.inputLabel}>Retard (minutes)</Text>
                     <View style={styles.delayContainer}>
                       <TextInput
-                        style={styles.input}
+                        style={[styles.input, isDark && styles.inputDark]}
                         value={editDelay}
                         onChangeText={setEditDelay}
                         placeholder="0"
@@ -1842,8 +1832,8 @@ export default function CalendarTab() {
 
                   <View style={styles.previewSection}>
                     <Text style={styles.previewTitle}>Aperçu des modifications</Text>
-                    <View style={styles.previewCard}>
-                      <Text style={styles.previewText}>
+                    <View style={[styles.previewCard, isDark && styles.previewCardDark]}>
+                      <Text style={[styles.previewText, isDark && styles.previewTextDark]}>
                         Nouvelle durée estimée: {(() => {
                           const packages = parseInt(editPackages) || 0;
                           const delayMinutes = parseInt(editDelay) || 0;
@@ -1857,7 +1847,7 @@ export default function CalendarTab() {
                           return `${hours}h ${minutes.toString().padStart(2, '0')}min ${seconds.toString().padStart(2, '0')}s`;
                         })()}
                       </Text>
-                      <Text style={styles.previewText}>
+                      <Text style={[styles.previewText, isDark && styles.previewTextDark]}>
                         Nouvelle heure de fin: {(() => {
                           const packages = parseInt(editPackages) || 0;
                           const delayMinutes = parseInt(editDelay) || 0;
@@ -1886,13 +1876,13 @@ export default function CalendarTab() {
 
             <View style={styles.modalActions}>
               <TouchableOpacity 
-                style={styles.modalButton}
+                style={[styles.modalButton, isDark && styles.modalButtonDark]}
                 onPress={closeEditModal}
               >
                 <Text style={styles.modalButtonText}>Annuler</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={[styles.modalButton, styles.primaryButton]}
+                style={[styles.modalButton, styles.primaryButton, isDark && styles.primaryButtonDark]}
                 onPress={saveEditedTask}
               >
                 <Text style={styles.primaryButtonText}>Sauvegarder</Text>
@@ -1921,7 +1911,7 @@ export default function CalendarTab() {
         onRequestClose={closeEditTimePicker}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, isDark && styles.modalContentDark]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Sélectionner l'heure de début</Text>
               <TouchableOpacity onPress={closeEditTimePicker}>
@@ -1939,18 +1929,20 @@ export default function CalendarTab() {
             <View style={styles.timePickerContainer}>
               <View style={styles.timePickerSection}>
                 <Text style={styles.timePickerLabel}>Heures</Text>
-                <ScrollView style={styles.timePickerScroll} showsVerticalScrollIndicator={false}>
+                <ScrollView style={styles.timePickerScroll} contentContainerStyle={styles.timePickerScrollContent} showsVerticalScrollIndicator={false}>
                   {generateAvailableHours().map((hour) => (
                     <TouchableOpacity
                       key={`edit-hour-${hour}`}
                       style={[
                         styles.timeOption,
+                        isDark && styles.timeOptionDark,
                         tempEditHour === hour && styles.selectedTimeOption
                       ]}
                       onPress={() => setTempEditHour(hour)}
                     >
                       <Text style={[
                         styles.timeOptionText,
+                        isDark && styles.timeOptionTextDark,
                         tempEditHour === hour && styles.selectedTimeText
                       ]}>
                         {hour}
@@ -1966,18 +1958,20 @@ export default function CalendarTab() {
 
               <View style={styles.timePickerSection}>
                 <Text style={styles.timePickerLabel}>Minutes</Text>
-                <ScrollView style={styles.timePickerScroll} showsVerticalScrollIndicator={false}>
+                <ScrollView style={styles.timePickerScroll} contentContainerStyle={styles.timePickerScrollContent} showsVerticalScrollIndicator={false}>
                   {generateAvailableMinutes().map((minute) => (
                     <TouchableOpacity
                       key={`edit-minute-${minute}`}
                       style={[
                         styles.timeOption,
+                        isDark && styles.timeOptionDark,
                         tempEditMinute === minute && styles.selectedTimeOption
                       ]}
                       onPress={() => setTempEditMinute(minute)}
                     >
                       <Text style={[
                         styles.timeOptionText,
+                        isDark && styles.timeOptionTextDark,
                         tempEditMinute === minute && styles.selectedTimeText
                       ]}>
                         {minute}
@@ -1990,13 +1984,13 @@ export default function CalendarTab() {
 
             <View style={styles.modalActions}>
               <TouchableOpacity 
-                style={styles.modalButton}
+                style={[styles.modalButton, isDark && styles.modalButtonDark]}
                 onPress={closeEditTimePicker}
               >
                 <Text style={styles.modalButtonText}>Annuler</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={[styles.modalButton, styles.primaryButton]}
+                style={[styles.modalButton, styles.primaryButton, isDark && styles.primaryButtonDark]}
                 onPress={() => {
                   setEditStartTime(`${tempEditHour}:${tempEditMinute}`);
                   closeEditTimePicker();
@@ -2017,7 +2011,7 @@ export default function CalendarTab() {
         onRequestClose={closeEditEventModal}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, isDark && styles.modalContentDark]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Modifier l'événement</Text>
               <TouchableOpacity onPress={closeEditEventModal}>
@@ -2026,9 +2020,9 @@ export default function CalendarTab() {
             </View>
 
             <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Titre *</Text>
+              <Text style={[styles.inputLabel, isDark && styles.inputLabelDark]}>Titre *</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, isDark && styles.inputDark]}
                 value={editEventTitle}
                 onChangeText={setEditEventTitle}
                 placeholder="Ex: Réunion équipe"
@@ -2037,13 +2031,13 @@ export default function CalendarTab() {
             </View>
 
             <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Date *</Text>
+              <Text style={[styles.inputLabel, isDark && styles.inputLabelDark]}>Date *</Text>
               <TouchableOpacity 
-                style={styles.dateSelector}
+                style={[styles.dateSelector, isDark && styles.dateSelectorDark]}
                 onPress={openEditEventDatePicker}
               >
                 <CalendarIcon color="#3b82f6" size={20} strokeWidth={2} />
-                <Text style={styles.dateText}>
+                <Text style={[styles.dateText, isDark && styles.dateTextDark]}>
                   {editEventDate.toLocaleDateString('fr-FR', {
                     weekday: 'long',
                     year: 'numeric',
@@ -2055,31 +2049,31 @@ export default function CalendarTab() {
             </View>
 
             <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Heure de début *</Text>
+              <Text style={[styles.inputLabel, isDark && styles.inputLabelDark]}>Heure de début *</Text>
               <TouchableOpacity 
-                style={styles.dateSelector}
+                style={[styles.dateSelector, isDark && styles.dateSelectorDark]}
                 onPress={() => openEventTimePicker('start')}
               >
                 <Clock color="#3b82f6" size={20} strokeWidth={2} />
-                <Text style={styles.dateText}>{editEventStartTime}</Text>
+                <Text style={[styles.dateText, isDark && styles.dateTextDark]}>{editEventStartTime}</Text>
               </TouchableOpacity>
             </View>
 
             <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Heure de fin *</Text>
+              <Text style={[styles.inputLabel, isDark && styles.inputLabelDark]}>Heure de fin *</Text>
               <TouchableOpacity 
-                style={styles.dateSelector}
+                style={[styles.dateSelector, isDark && styles.dateSelectorDark]}
                 onPress={() => openEventTimePicker('end')}
               >
                 <Clock color="#3b82f6" size={20} strokeWidth={2} />
-                <Text style={styles.dateText}>{editEventEndTime}</Text>
+                <Text style={[styles.dateText, isDark && styles.dateTextDark]}>{editEventEndTime}</Text>
               </TouchableOpacity>
             </View>
 
             <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Lieu</Text>
+              <Text style={[styles.inputLabel, isDark && styles.inputLabelDark]}>Lieu</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, isDark && styles.inputDark]}
                 value={editEventLocation}
                 onChangeText={setEditEventLocation}
                 placeholder="Ex: Salle de réunion"
@@ -2088,17 +2082,19 @@ export default function CalendarTab() {
             </View>
 
             <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Type d'événement</Text>
+              <Text style={[styles.inputLabel, isDark && styles.inputLabelDark]}>Type d'événement</Text>
               <View style={styles.typeSelector}>
                 <TouchableOpacity
                   style={[
                     styles.typeOption,
+                    isDark && styles.typeOptionDark,
                     editEventType === 'meeting' && styles.selectedTypeOption
                   ]}
                   onPress={() => setEditEventType('meeting')}
                 >
                   <Text style={[
                     styles.typeOptionText,
+                    isDark && styles.typeOptionTextDark,
                     editEventType === 'meeting' && styles.selectedTypeText
                   ]}>
                     Réunion
@@ -2107,12 +2103,14 @@ export default function CalendarTab() {
                 <TouchableOpacity
                   style={[
                     styles.typeOption,
+                    isDark && styles.typeOptionDark,
                     editEventType === 'training' && styles.selectedTypeOption
                   ]}
                   onPress={() => setEditEventType('training')}
                 >
                   <Text style={[
                     styles.typeOptionText,
+                    isDark && styles.typeOptionTextDark,
                     editEventType === 'training' && styles.selectedTypeText
                   ]}>
                     Formation
@@ -2121,12 +2119,14 @@ export default function CalendarTab() {
                 <TouchableOpacity
                   style={[
                     styles.typeOption,
+                    isDark && styles.typeOptionDark,
                     editEventType === 'inspection' && styles.selectedTypeOption
                   ]}
                   onPress={() => setEditEventType('inspection')}
                 >
                   <Text style={[
                     styles.typeOptionText,
+                    isDark && styles.typeOptionTextDark,
                     editEventType === 'inspection' && styles.selectedTypeText
                   ]}>
                     Inspection
@@ -2137,13 +2137,13 @@ export default function CalendarTab() {
 
             <View style={styles.modalActions}>
               <TouchableOpacity 
-                style={styles.modalButton}
+                style={[styles.modalButton, isDark && styles.modalButtonDark]}
                 onPress={closeEditEventModal}
               >
                 <Text style={styles.modalButtonText}>Annuler</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={[styles.modalButton, styles.primaryButton]}
+                style={[styles.modalButton, styles.primaryButton, isDark && styles.primaryButtonDark]}
                 onPress={saveEditedEvent}
               >
                 <Text style={styles.primaryButtonText}>Sauvegarder</Text>
@@ -2171,7 +2171,7 @@ export default function CalendarTab() {
         onRequestClose={closeEventTimePicker}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, isDark && styles.modalContentDark]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
                 {timePickerMode === 'start' ? 'Heure de début' : 'Heure de fin'}
@@ -2191,18 +2191,20 @@ export default function CalendarTab() {
             <View style={styles.timePickerContainer}>
               <View style={styles.timePickerSection}>
                 <Text style={styles.timePickerLabel}>Heures</Text>
-                <ScrollView style={styles.timePickerScroll} showsVerticalScrollIndicator={false}>
+                <ScrollView style={styles.timePickerScroll} contentContainerStyle={styles.timePickerScrollContent} showsVerticalScrollIndicator={false}>
                   {generateAvailableHours().map((hour) => (
                     <TouchableOpacity
                       key={`event-hour-${hour}`}
                       style={[
                         styles.timeOption,
+                        isDark && styles.timeOptionDark,
                         tempEventHour === hour && styles.selectedTimeOption
                       ]}
                       onPress={() => setTempEventHour(hour)}
                     >
                       <Text style={[
                         styles.timeOptionText,
+                        isDark && styles.timeOptionTextDark,
                         tempEventHour === hour && styles.selectedTimeText
                       ]}>
                         {hour}
@@ -2218,18 +2220,20 @@ export default function CalendarTab() {
 
               <View style={styles.timePickerSection}>
                 <Text style={styles.timePickerLabel}>Minutes</Text>
-                <ScrollView style={styles.timePickerScroll} showsVerticalScrollIndicator={false}>
+                <ScrollView style={styles.timePickerScroll} contentContainerStyle={styles.timePickerScrollContent} showsVerticalScrollIndicator={false}>
                   {generateAvailableMinutes().map((minute) => (
                     <TouchableOpacity
                       key={`event-minute-${minute}`}
                       style={[
                         styles.timeOption,
+                        isDark && styles.timeOptionDark,
                         tempEventMinute === minute && styles.selectedTimeOption
                       ]}
                       onPress={() => setTempEventMinute(minute)}
                     >
                       <Text style={[
                         styles.timeOptionText,
+                        isDark && styles.timeOptionTextDark,
                         tempEventMinute === minute && styles.selectedTimeText
                       ]}>
                         {minute}
@@ -2242,13 +2246,13 @@ export default function CalendarTab() {
 
             <View style={styles.modalActions}>
               <TouchableOpacity 
-                style={styles.modalButton}
+                style={[styles.modalButton, isDark && styles.modalButtonDark]}
                 onPress={closeEventTimePicker}
               >
                 <Text style={styles.modalButtonText}>Annuler</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={[styles.modalButton, styles.primaryButton]}
+                style={[styles.modalButton, styles.primaryButton, isDark && styles.primaryButtonDark]}
                 onPress={() => {
                   const newTime = `${tempEventHour}:${tempEventMinute}`;
                   if (timePickerMode === 'start') {
@@ -2274,25 +2278,25 @@ export default function CalendarTab() {
         onRequestClose={cancelDeleteEvent}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, isDark && styles.modalContentDark]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Supprimer l'événement</Text>
               <TouchableOpacity onPress={cancelDeleteEvent}>
                 <X color="#6b7280" size={24} strokeWidth={2} />
               </TouchableOpacity>
             </View>
-            <Text style={styles.modalMessage}>
+            <Text style={[styles.modalMessage, isDark && styles.modalMessageDark]}>
               Êtes-vous sûr de vouloir supprimer l'événement "{eventToDelete?.title}"?
             </Text>
             <View style={styles.modalActions}>
               <TouchableOpacity 
-                style={styles.modalButton}
+                style={[styles.modalButton, isDark && styles.modalButtonDark]}
                 onPress={cancelDeleteEvent}
               >
                 <Text style={styles.modalButtonText}>Annuler</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={[styles.modalButton, styles.primaryButton]}
+                style={[styles.modalButton, styles.primaryButton, isDark && styles.primaryButtonDark]}
                 onPress={confirmDeleteEvent}
               >
                 <Text style={styles.primaryButtonText}>Supprimer</Text>
@@ -2310,7 +2314,7 @@ export default function CalendarTab() {
         onRequestClose={() => setShowAddEventTimePicker(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, isDark && styles.modalContentDark]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Sélectionner l'heure</Text>
               <TouchableOpacity onPress={() => setShowAddEventTimePicker(false)}>
@@ -2330,6 +2334,7 @@ export default function CalendarTab() {
                 <Text style={styles.timePickerLabel}>Heures</Text>
                 <ScrollView 
                   style={styles.timePickerScroll}
+                  contentContainerStyle={styles.timePickerScrollContent}
                   showsVerticalScrollIndicator={false}
                   snapToInterval={50}
                   decelerationRate="fast"
@@ -2339,12 +2344,14 @@ export default function CalendarTab() {
                       key={hour}
                       style={[
                         styles.timeOption,
+                        isDark && styles.timeOptionDark,
                         tempAddEventHour === hour && styles.selectedTimeOption
                       ]}
                       onPress={() => setTempAddEventHour(hour)}
                     >
                       <Text style={[
                         styles.timeOptionText,
+                        isDark && styles.timeOptionTextDark,
                         tempAddEventHour === hour && styles.selectedTimeText
                       ]}>
                         {hour}
@@ -2362,6 +2369,7 @@ export default function CalendarTab() {
                 <Text style={styles.timePickerLabel}>Minutes</Text>
                 <ScrollView 
                   style={styles.timePickerScroll}
+                  contentContainerStyle={styles.timePickerScrollContent}
                   showsVerticalScrollIndicator={false}
                   snapToInterval={50}
                   decelerationRate="fast"
@@ -2371,12 +2379,14 @@ export default function CalendarTab() {
                       key={minute}
                       style={[
                         styles.timeOption,
+                        isDark && styles.timeOptionDark,
                         tempAddEventMinute === minute && styles.selectedTimeOption
                       ]}
                       onPress={() => setTempAddEventMinute(minute)}
                     >
                       <Text style={[
                         styles.timeOptionText,
+                        isDark && styles.timeOptionTextDark,
                         tempAddEventMinute === minute && styles.selectedTimeText
                       ]}>
                         {minute}
@@ -2389,13 +2399,13 @@ export default function CalendarTab() {
 
             <View style={styles.modalActions}>
               <TouchableOpacity 
-                style={styles.modalButton}
+                style={[styles.modalButton, isDark && styles.modalButtonDark]}
                 onPress={() => setShowAddEventTimePicker(false)}
               >
                 <Text style={styles.modalButtonText}>Annuler</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={[styles.modalButton, styles.primaryButton]}
+                style={[styles.modalButton, styles.primaryButton, isDark && styles.primaryButtonDark]}
                 onPress={() => {
                   setEventTime(`${tempAddEventHour}:${tempAddEventMinute}`);
                   setShowAddEventTimePicker(false);
@@ -2421,15 +2431,15 @@ export default function CalendarTab() {
           justifyContent: 'center',
           alignItems: 'center',
         }}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, isDark && styles.modalContentDark]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Sélectionner les membres de l'équipe</Text>
               <TouchableOpacity onPress={() => setShowEmployeeSelector(false)}>
                 <X color="#6b7280" size={24} strokeWidth={2} />
               </TouchableOpacity>
             </View>
-            <ScrollView style={styles.modalScrollView} showsVerticalScrollIndicator={false}>
-              <Text style={styles.modalMessage}>
+            <ScrollView style={styles.modalScrollView} contentContainerStyle={styles.modalScrollContent} showsVerticalScrollIndicator={false}>
+              <Text style={[styles.modalMessage, isDark && styles.modalMessageDark]}>
                 Sélectionnez les employés à assigner à cette tâche. Les employés déjà assignés à d'autres tâches sont grisés.
               </Text>
               {allEmployees.map((employee) => {
@@ -2454,8 +2464,8 @@ export default function CalendarTab() {
                     disabled={isBusy && !isCurrentTaskMember}
                   >
                     <View style={styles.employeeOptionContent}>
-                      {employee.avatar ? (
-                        <Image source={{ uri: employee.avatar }} style={styles.employeeOptionAvatar} />
+                      {employee.avatar_url ? (
+                        <Image source={{ uri: employee.avatar_url }} style={styles.employeeOptionAvatar} />
                       ) : (
                         <View style={styles.employeeOptionAvatarPlaceholder}>
                           <Users color="#3b82f6" size={20} strokeWidth={2} />
@@ -2496,7 +2506,7 @@ export default function CalendarTab() {
             </ScrollView>
             <View style={styles.modalActions}>
               <TouchableOpacity 
-                style={styles.modalButton}
+                style={[styles.modalButton, isDark && styles.modalButtonDark]}
                 onPress={() => setShowEmployeeSelector(false)}
               >
                 <Text style={styles.modalButtonText}>Fermer</Text>
@@ -2514,7 +2524,7 @@ export default function CalendarTab() {
         onRequestClose={closeRemindersModal}
       >
         <Animated.View style={[styles.modalOverlay, { opacity: remindersModalOpacity }]}> 
-          <Animated.View style={[styles.modalContent, { transform: [{ scale: remindersModalScale }] }]}> 
+          <Animated.View style={[styles.modalContent, { transform: [{ scale: remindersModalScale }] }, isDark && styles.modalContentDark]}> 
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Rappels intelligents</Text>
               <TouchableOpacity onPress={closeRemindersModal}>
@@ -2525,7 +2535,7 @@ export default function CalendarTab() {
               <View style={{ marginBottom: 16 }}>
                 <Text style={{ fontWeight: 'bold', fontSize: 16 }}>{selectedTaskForReminders.title}</Text>
                 <Text style={{ color: '#6b7280', fontSize: 14 }}>
-                  {selectedTaskForReminders.startTime} - {selectedTaskForReminders.endTime} | {selectedTaskForReminders.packages} colis | {selectedTaskForReminders.teamSize} pers.
+                  {selectedTaskForReminders.start_time} - {selectedTaskForReminders.end_time} | {selectedTaskForReminders.packages} colis | {selectedTaskForReminders.team_size} pers.
                 </Text>
                 {workloadAnalysis && (
                   <Text style={{ color: '#8b5cf6', fontSize: 13, marginTop: 4 }}>
@@ -2534,7 +2544,7 @@ export default function CalendarTab() {
                 )}
               </View>
             )}
-            <ScrollView style={{ maxHeight: 300 }}>
+            <ScrollView style={{ maxHeight: 300 }} contentContainerStyle={{flexGrow:1}}>
               {taskReminders.length === 0 ? (
                 <Text style={{ color: '#9ca3af', textAlign: 'center', marginVertical: 24 }}>Aucun rappel intelligent généré pour cette tâche.</Text>
               ) : (
@@ -2565,7 +2575,7 @@ export default function CalendarTab() {
               <TouchableOpacity style={[styles.modalButton, { marginRight: 8 }]} onPress={regenerateReminders}>
                 <Text style={styles.modalButtonText}>Régénérer</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalButton, styles.primaryButton]} onPress={closeRemindersModal}>
+              <TouchableOpacity style={[styles.modalButton, styles.primaryButton, isDark && styles.primaryButtonDark]} onPress={closeRemindersModal}>
                 <Text style={styles.primaryButtonText}>Fermer</Text>
               </TouchableOpacity>
             </View>
@@ -2582,26 +2592,59 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F5F5F5',
   },
+  containerDark: {
+    backgroundColor: '#18181b',
+  },
   scrollView: {
     flex: 1,
   },
+  scrollContent: {
+    flexGrow: 1,
+    // Ajoute ici alignItems ou justifyContent si tu veux centrer le contenu
+  },
   header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 24,
-    paddingTop: 80,
-    paddingBottom: 32,
+    paddingTop: 20,
+    paddingBottom: 16,
   },
-  title: {
-    fontSize: 28,
+  headerTitle: {
+    fontSize: 24,
     fontWeight: '700',
     color: '#1a1a1a',
-    marginTop: 16,
-    marginBottom: 8,
   },
-  subtitle: {
-    fontSize: 16,
-    color: '#6b7280',
-    textAlign: 'center',
+  headerTitleDark: {
+    color: '#f4f4f5',
+  },
+  workingHoursButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  workingHoursButtonDark: {
+    backgroundColor: '#27272a',
+  },
+  workingHoursText: {
+    marginLeft: 6,
+    fontSize: 14,
+    color: '#1a1a1a',
+    fontWeight: '500',
+  },
+  workingHoursTextDark: {
+    color: '#ffffff',
   },
   section: {
     paddingHorizontal: 24,
@@ -2620,16 +2663,13 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  workingHoursCardDark: {
+    backgroundColor: '#27272a',
+  },
   workingHoursContent: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 8,
-  },
-  workingHoursText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1a1a1a',
-    marginLeft: 12,
   },
   workingHoursHint: {
     fontSize: 12,
@@ -2643,9 +2683,13 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   sectionTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '600',
     color: '#1a1a1a',
+    marginBottom: 12,
+  },
+  sectionTitleDark: {
+    color: '#f4f4f5',
   },
   weekHeader: {
     flexDirection: 'row',
@@ -2680,7 +2724,52 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   weekContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 24,
     marginBottom: 16,
+    backgroundColor: '#ffffff',
+    paddingVertical: 12,
+    marginHorizontal: 16,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  weekContainerContent: {
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  weekContainerDark: {
+    backgroundColor: '#27272a',
+  },
+  weekNav: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#ffffff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  weekLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1a1a1a',
+  },
+  weekLabelDark: {
+    color: '#ffffff',
   },
   dayCard: {
     backgroundColor: '#ffffff',
@@ -2713,11 +2802,16 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     textTransform: 'capitalize',
   },
+  dayNameDark: {
+    color: '#f4f4f5',
+  },
   dayNumber: {
     fontSize: 18,
-    color: '#1a1a1a',
     fontWeight: '600',
-    marginBottom: 8,
+    color: '#1a1a1a',
+  },
+  dayNumberDark: {
+    color: '#f4f4f5',
   },
   selectedDayText: {
     color: '#ffffff',
@@ -2765,6 +2859,9 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  dateCardDark: {
+    backgroundColor: '#27272a',
+  },
   dateText: {
     fontSize: 18,
     fontWeight: '600',
@@ -2795,6 +2892,9 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  taskCardDark: {
+    backgroundColor: '#27272a',
+  },
   taskIndicatorLine: {
     width: 4,
   },
@@ -2813,6 +2913,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1a1a1a',
     flex: 1,
+  },
+  taskTitleDark: {
+    color: '#f4f4f5',
   },
   taskActions: {
     flexDirection: 'row',
@@ -2865,6 +2968,9 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     marginLeft: 8,
   },
+  taskDetailTextDark: {
+    color: '#f4f4f5',
+  },
   eventCard: {
     backgroundColor: '#ffffff',
     borderRadius: 12,
@@ -2879,6 +2985,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 4,
     elevation: 3,
+  },
+  eventCardDark: {
+    backgroundColor: '#27272a',
   },
   eventIndicator: {
     width: 4,
@@ -2898,6 +3007,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1a1a1a',
     flex: 1,
+  },
+  eventTitleDark: {
+    color: '#f4f4f5',
   },
   eventActions: {
     flexDirection: 'row',
@@ -2948,10 +3060,16 @@ const styles = StyleSheet.create({
     marginLeft: 4,
     fontWeight: '500',
   },
+  eventTimeTextDark: {
+    color: '#f4f4f5',
+  },
   eventDuration: {
     fontSize: 14,
     color: '#6b7280',
     marginBottom: 8,
+  },
+  eventDurationDark: {
+    color: '#f4f4f5',
   },
   eventLocation: {
     flexDirection: 'row',
@@ -2961,6 +3079,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6b7280',
     marginLeft: 4,
+  },
+  eventLocationTextDark: {
+    color: '#f4f4f5',
   },
   actionCard: {
     backgroundColor: '#ffffff',
@@ -2977,6 +3098,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 3,
     elevation: 2,
+  },
+  actionCardDark: {
+    backgroundColor: '#27272a',
   },
   actionIcon: {
     width: 40,
@@ -3007,6 +3131,9 @@ const styles = StyleSheet.create({
     maxHeight: '80%',
     minHeight: 400,
   },
+  modalContentDark: {
+    backgroundColor: '#27272a',
+  },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -3017,6 +3144,9 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#1a1a1a',
+  },
+  modalTitleDark: {
+    color: '#f4f4f5',
   },
   timePickerContainer: {
     flexDirection: 'row',
@@ -3036,12 +3166,20 @@ const styles = StyleSheet.create({
   timePickerScroll: {
     maxHeight: 200,
   },
+  timePickerScrollContent: {
+    flexGrow: 1,
+    // Ajoute ici alignItems ou justifyContent si besoin
+  },
   timeOption: {
     padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#e5e7eb',
     backgroundColor: '#fff',
     alignItems: 'center',
+  },
+  timeOptionDark: {
+    backgroundColor: '#18181b',
+    borderColor: '#3f3f46',
   },
   selectedTimeOption: {
     backgroundColor: '#3b82f6',
@@ -3064,6 +3202,9 @@ const styles = StyleSheet.create({
     color: '#1a1a1a',
     marginBottom: 8,
   },
+  inputLabelDark: {
+    color: '#f4f4f5',
+  },
   input: {
     borderWidth: 1,
     borderColor: '#e5e7eb',
@@ -3072,6 +3213,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#1a1a1a',
     backgroundColor: '#f9fafb',
+  },
+  inputDark: {
+    backgroundColor: '#18181b',
+    color: '#fff',
+    borderColor: '#3f3f46',
   },
   modalActions: {
     flexDirection: 'row',
@@ -3085,13 +3231,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#f3f4f6',
   },
+  modalButtonDark: {
+    backgroundColor: '#27272a',
+  },
   primaryButton: {
     backgroundColor: '#3b82f6',
   },
-  modalButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#6b7280',
+  primaryButtonDark: {
+    backgroundColor: '#2563eb',
   },
   primaryButtonText: {
     fontSize: 16,
@@ -3120,6 +3267,10 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  dateSelectorDark: {
+    backgroundColor: '#27272a',
+    borderColor: '#3f3f46',
+  },
   previewSection: {
     marginBottom: 24,
   },
@@ -3128,6 +3279,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1a1a1a',
     marginBottom: 8,
+  },
+  previewTitleDark: {
+    color: '#f4f4f5',
   },
   previewCard: {
     backgroundColor: '#ffffff',
@@ -3142,10 +3296,16 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  previewCardDark: {
+    backgroundColor: '#27272a',
+  },
   previewText: {
     fontSize: 14,
     color: '#6b7280',
     marginBottom: 8,
+  },
+  previewTextDark: {
+    color: '#f4f4f5',
   },
 
 
@@ -3164,6 +3324,10 @@ const styles = StyleSheet.create({
   modalScrollView: {
     flex: 1,
     marginBottom: 16,
+  },
+  modalScrollContent: {
+    flexGrow: 1,
+    // Ajoute ici alignItems ou justifyContent si besoin
   },
   delayContainer: {
     flexDirection: 'row',
@@ -3188,9 +3352,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#f9fafb',
   },
+  typeOptionDark: {
+    backgroundColor: '#18181b',
+    borderColor: '#3f3f46',
+  },
   selectedTypeOption: {
     backgroundColor: '#3b82f6',
     borderColor: '#3b82f6',
+  },
+  selectedTypeOptionDark: {
+    backgroundColor: '#2563eb',
+    borderColor: '#2563eb',
   },
   typeOptionText: {
     fontSize: 14,
@@ -3201,11 +3373,17 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '600',
   },
+  selectedTypeTextDark: {
+    color: '#f4f4f5',
+  },
   modalMessage: {
     fontSize: 16,
     color: '#6b7280',
     textAlign: 'center',
     marginBottom: 24,
+  },
+  modalMessageDark: {
+    color: '#f4f4f5',
   },
   timePickerPreview: {
     marginTop: 16,
@@ -3645,5 +3823,48 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 8,
+  },
+  datesContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    marginBottom: 16,
+    backgroundColor: '#e0f2fe',
+    paddingVertical: 12,
+    marginHorizontal: 16,
+    borderRadius: 12,
+  },
+  dateDisplayContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    marginBottom: 16,
+    backgroundColor: '#e0f2fe',
+    paddingVertical: 12,
+    marginHorizontal: 16,
+    borderRadius: 12,
+  },
+  dateDisplayContainerDark: {
+    backgroundColor: '#1e293b',
+  },
+  dateDisplay: {
+    marginLeft: 8,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#3b82f6',
+  },
+  dateDisplayDark: {
+    color: '#60a5fa',
+  },
+  selectedDate: {
+    backgroundColor: '#3b82f6',
+  },
+  todayDate: {
+    borderWidth: 2,
+    borderColor: '#10b981',
+  },
+  selectedText: {
+    color: '#ffffff',
   },
 });

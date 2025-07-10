@@ -11,31 +11,43 @@ import {
   TextInput,
   Alert,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Users, Phone, Mail, MapPin, Star, Clock, Plus, X, UserPlus, Calendar, Target, Edit, ChevronDown } from 'lucide-react-native';
+import { Users, Phone, Mail, MapPin, Star, Clock, Plus, X, UserPlus, Calendar, Target, Edit, ChevronDown, ArrowLeft } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { useSupabaseEmployees } from '../../hooks/useSupabaseEmployees';
+import { useSupabaseAuth } from '../../hooks/useSupabaseAuth';
+import { useUserProfile } from '../../hooks/useUserProfile';
+import { useRouter } from 'expo-router';
+import { useTheme } from '../../contexts/ThemeContext';
 
 interface TeamMember {
   id: number;
   name: string;
   role: string;
-  status: string;
+  section: string;
+  status: 'online' | 'busy' | 'offline' | 'break';
   rating: number;
   location: string;
-  phone: string;
-  email: string;
-  avatar: string;
+  phone: string | null;
+  email: string | null;
+  avatar_url: string | null;
   shift: string;
   performance: number;
-  tasksCompleted: number;
+  tasks_completed: number;
+  manager_id: number;
+  store_id: number;
 }
 
 export default function TeamTab() {
+  const router = useRouter();
+  const { isDark } = useTheme();
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
   const [showMeetingModal, setShowMeetingModal] = useState(false);
   const [showEditMemberModal, setShowEditMemberModal] = useState(false);
   const [newMemberName, setNewMemberName] = useState('');
   const [newMemberRole, setNewMemberRole] = useState('');
+  const [newMemberSection, setNewMemberSection] = useState('');
+  const [newMemberLocation, setNewMemberLocation] = useState('');
+  const [newMemberShift, setNewMemberShift] = useState('matin');
   const [meetingTitle, setMeetingTitle] = useState('');
   const [meetingTime, setMeetingTime] = useState('');
   
@@ -43,6 +55,7 @@ export default function TeamTab() {
   const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
   const [editName, setEditName] = useState('');
   const [editRole, setEditRole] = useState('');
+  const [editSection, setEditSection] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editLocation, setEditLocation] = useState('');
@@ -52,9 +65,9 @@ export default function TeamTab() {
   // États pour le sélecteur d'horaires
   const [showShiftPicker, setShowShiftPicker] = useState(false);
   const [shiftPresets, setShiftPresets] = useState([
-    'Matin (05:00-13:00)',
-    'Après-midi (13:00-21:00)',
-    'Soir (21:00-05:00)'
+    'matin',
+    'après-midi',
+    'soir'
   ]);
   const [showPresetModal, setShowPresetModal] = useState(false);
   const [newPreset, setNewPreset] = useState('');
@@ -63,271 +76,137 @@ export default function TeamTab() {
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
   const [memberToDelete, setMemberToDelete] = useState<{id: number, name: string} | null>(null);
 
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([
-    {
-      id: 1,
-      name: 'Marie Dubois',
-      role: 'Responsable rayon',
-      status: 'En ligne',
-      rating: 4.8,
-      location: 'Fruits & Légumes',
-      phone: '+33 6 12 34 56 78',
-      email: 'marie.dubois@supermarche.com',
-      avatar: 'https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&fit=crop',
-      shift: 'Matin (05:00-13:00)',
-      performance: 92,
-      tasksCompleted: 28
-    },
-    {
-      id: 2,
-      name: 'Pierre Martin',
-      role: 'Employé polyvalent',
-      status: 'Occupé',
-      rating: 4.6,
-      location: 'Mise en rayon',
-      phone: '+33 6 23 45 67 89',
-      email: 'pierre.martin@supermarche.com',
-      avatar: 'https://images.pexels.com/photos/1222271/pexels-photo-1222271.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&fit=crop',
-      shift: 'Après-midi (13:00-21:00)',
-      performance: 87,
-      tasksCompleted: 24
-    },
-    {
-      id: 3,
-      name: 'Sophie Laurent',
-      role: 'Spécialiste qualité',
-      status: 'En ligne',
-      rating: 4.9,
-      location: 'Contrôle qualité',
-      phone: '+33 6 34 56 78 90',
-      email: 'sophie.laurent@supermarche.com',
-      avatar: 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&fit=crop',
-      shift: 'Matin (05:00-13:00)',
-      performance: 95,
-      tasksCompleted: 31
-    },
-    {
-      id: 4,
-      name: 'Thomas Durand',
-      role: 'Manutentionnaire',
-      status: 'En pause',
-      rating: 4.4,
-      location: 'Réserve',
-      phone: '+33 6 45 67 89 01',
-      email: 'thomas.durand@supermarche.com',
-      avatar: 'https://images.pexels.com/photos/1681010/pexels-photo-1681010.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&fit=crop',
-      shift: 'Nuit (21:00-05:00)',
-      performance: 78,
-      tasksCompleted: 19
-    }
-  ]);
-
-  // Charger l'équipe depuis AsyncStorage au démarrage
-  useEffect(() => {
-    loadTeamMembers();
-  }, []);
-
-  // Sauvegarder l'équipe dans AsyncStorage quand elle change
-  useEffect(() => {
-    saveTeamMembers();
-  }, [teamMembers]);
-
-  // Debug: Monitor delete confirmation modal state
-  useEffect(() => {
-    console.log('État du modal de suppression changé:', showDeleteConfirmModal);
-    console.log('Membre à supprimer:', memberToDelete);
-  }, [showDeleteConfirmModal, memberToDelete]);
+  // Hooks
+  const { user: authUser } = useSupabaseAuth();
+  const { user: userProfile } = useUserProfile();
+  
+  // Filtrer les employés par section du manager
+  const { 
+    employees: teamMembers, 
+    isLoading, 
+    error,
+    createEmployee, 
+    updateEmployee, 
+    deleteEmployee
+  } = useSupabaseEmployees(
+    userProfile?.section ? { section: userProfile.section } : undefined
+  );
 
   // Debug: Monitor team members state
   useEffect(() => {
+    console.log('🟩 [DEBUG] TeamTab - userProfile:', userProfile);
     console.log('Team members state updated:', teamMembers);
     console.log('Team members IDs:', teamMembers.map(m => m.id));
-  }, [teamMembers]);
-
-  const loadTeamMembers = async () => {
-    try {
-      const savedTeam = await AsyncStorage.getItem('teamMembers');
-      if (savedTeam) {
-        const parsedTeam = JSON.parse(savedTeam);
-        console.log('Team members loaded from storage:', parsedTeam);
-        
-        // Filter out any members with null or invalid IDs
-        const validTeam = parsedTeam.filter((member: TeamMember) => {
-          if (member.id === null || member.id === undefined || isNaN(member.id)) {
-            console.warn('Found member with invalid ID:', member);
-            return false;
-          }
-          return true;
-        });
-        
-        if (validTeam.length !== parsedTeam.length) {
-          console.log(`Filtered out ${parsedTeam.length - validTeam.length} members with invalid IDs`);
-          // If we found invalid data, clear the storage and use default data
-          if (validTeam.length === 0) {
-            console.log('No valid members found, resetting to default data');
-            await AsyncStorage.removeItem('teamMembers');
-            setTeamMembers([
-              {
-                id: 1,
-                name: 'Marie Dubois',
-                role: 'Responsable rayon',
-                status: 'En ligne',
-                rating: 4.8,
-                location: 'Fruits & Légumes',
-                phone: '+33 6 12 34 56 78',
-                email: 'marie.dubois@supermarche.com',
-                avatar: 'https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&fit=crop',
-                shift: 'Matin (05:00-13:00)',
-                performance: 92,
-                tasksCompleted: 28
-              },
-              {
-                id: 2,
-                name: 'Pierre Martin',
-                role: 'Employé polyvalent',
-                status: 'Occupé',
-                rating: 4.6,
-                location: 'Mise en rayon',
-                phone: '+33 6 23 45 67 89',
-                email: 'pierre.martin@supermarche.com',
-                avatar: 'https://images.pexels.com/photos/1222271/pexels-photo-1222271.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&fit=crop',
-                shift: 'Après-midi (13:00-21:00)',
-                performance: 87,
-                tasksCompleted: 24
-              },
-              {
-                id: 3,
-                name: 'Sophie Laurent',
-                role: 'Spécialiste qualité',
-                status: 'En ligne',
-                rating: 4.9,
-                location: 'Contrôle qualité',
-                phone: '+33 6 34 56 78 90',
-                email: 'sophie.laurent@supermarche.com',
-                avatar: 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&fit=crop',
-                shift: 'Matin (05:00-13:00)',
-                performance: 95,
-                tasksCompleted: 31
-              },
-              {
-                id: 4,
-                name: 'Thomas Durand',
-                role: 'Manutentionnaire',
-                status: 'En pause',
-                rating: 4.4,
-                location: 'Réserve',
-                phone: '+33 6 45 67 89 01',
-                email: 'thomas.durand@supermarche.com',
-                avatar: 'https://images.pexels.com/photos/1681010/pexels-photo-1681010.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&fit=crop',
-                shift: 'Nuit (21:00-05:00)',
-                performance: 78,
-                tasksCompleted: 19
-              }
-            ]);
-            return;
-          }
-        }
-        
-        setTeamMembers(validTeam);
-      }
-    } catch (error) {
-      console.error('Error loading team members:', error);
-    }
-  };
-
-  const saveTeamMembers = async () => {
-    try {
-      await AsyncStorage.setItem('teamMembers', JSON.stringify(teamMembers));
-    } catch (error) {
-      console.error('Error saving team members:', error);
-    }
-  };
+  }, [userProfile, teamMembers]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'En ligne': return '#10b981';
-      case 'Occupé': return '#f59e0b';
-      case 'En pause': return '#3b82f6';
-      case 'Hors ligne': return '#6b7280';
+      case 'online': return '#10b981';
+      case 'busy': return '#f59e0b';
+      case 'break': return '#3b82f6';
+      case 'offline': return '#6b7280';
       default: return '#6b7280';
+    }
+  };
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'online': return 'En ligne';
+      case 'busy': return 'Occupé';
+      case 'break': return 'En pause';
+      case 'offline': return 'Hors ligne';
+      default: return 'Inconnu';
     }
   };
 
   const getPerformanceColor = (performance: number) => {
     if (performance >= 90) return '#10b981';
-    if (performance >= 80) return '#3b82f6';
-    if (performance >= 70) return '#f59e0b';
+    if (performance >= 75) return '#f59e0b';
     return '#ef4444';
   };
 
-  const addNewMember = () => {
-    if (!newMemberName.trim() || !newMemberRole.trim()) {
-      Alert.alert('Erreur', 'Veuillez remplir tous les champs');
+  const addNewMember = async () => {
+    if (!newMemberName.trim() || !newMemberRole.trim() || !newMemberSection.trim() || !newMemberLocation.trim()) {
+      Alert.alert('Erreur', 'Veuillez remplir tous les champs obligatoires');
       return;
     }
 
-    // Fix the ID generation to avoid -Infinity when array is empty
-    const newId = teamMembers.length > 0 ? Math.max(...teamMembers.map(m => m.id)) + 1 : 1;
+    if (!userProfile?.id || !userProfile?.store_id) {
+      Alert.alert('Erreur', 'Impossible de récupérer les informations du manager');
+      return;
+    }
 
-    const newMember: TeamMember = {
-      id: newId,
-      name: newMemberName,
-      role: newMemberRole,
-      status: 'Hors ligne',
-      rating: 4.0,
-      location: 'À définir',
-      phone: '+33 6 XX XX XX XX',
-      email: `${newMemberName.toLowerCase().replace(' ', '.')}@supermarche.com`,
-      avatar: 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&fit=crop',
-      shift: 'À définir',
-      performance: 75,
-      tasksCompleted: 0
-    };
+    try {
+      const memberData = {
+        name: newMemberName.trim(),
+        role: newMemberRole.trim(),
+        section: newMemberSection.trim(),
+        location: newMemberLocation.trim(),
+        shift: newMemberShift as 'matin' | 'après-midi' | 'soir',
+        manager_id: userProfile.id,
+        store_id: userProfile.store_id
+      };
 
-    setTeamMembers([...teamMembers, newMember]);
+      const result = await createEmployee(memberData);
+      
+      if (result.success) {
+        Alert.alert('Succès', 'Employé ajouté avec succès');
+        setShowAddMemberModal(false);
     setNewMemberName('');
     setNewMemberRole('');
-    setShowAddMemberModal(false);
-    Alert.alert('Succès', 'Nouveau membre ajouté à l\'équipe');
+        setNewMemberSection('');
+        setNewMemberLocation('');
+        setNewMemberShift('matin');
+      } else {
+        Alert.alert('Erreur', result.error || 'Erreur lors de l\'ajout');
+      }
+    } catch (error) {
+      Alert.alert('Erreur', 'Erreur lors de l\'ajout de l\'employé');
+    }
   };
 
   const openEditModal = (member: TeamMember) => {
     setEditingMember(member);
     setEditName(member.name);
     setEditRole(member.role);
-    setEditPhone(member.phone);
-    setEditEmail(member.email);
+    setEditSection(member.section);
+    setEditPhone(member.phone || '');
+    setEditEmail(member.email || '');
     setEditLocation(member.location);
     setEditShift(member.shift);
-    setEditAvatar(member.avatar);
+    setEditAvatar(member.avatar_url || '');
     setShowEditMemberModal(true);
   };
 
-  const saveMemberChanges = () => {
-    if (!editingMember || !editName.trim() || !editRole.trim()) {
+  const saveMemberChanges = async () => {
+    if (!editingMember || !editName.trim() || !editRole.trim() || !editSection.trim()) {
       Alert.alert('Erreur', 'Veuillez remplir tous les champs obligatoires');
       return;
     }
 
-    const updatedMembers = teamMembers.map(member => 
-      member.id === editingMember.id 
-        ? {
-            ...member,
-            name: editName,
-            role: editRole,
-            phone: editPhone,
-            email: editEmail,
-            location: editLocation,
-            shift: editShift,
-            avatar: editAvatar
-          }
-        : member
-    );
+    try {
+      const updates = {
+        name: editName.trim(),
+        role: editRole.trim(),
+        section: editSection.trim(),
+        phone: editPhone.trim() || undefined,
+        email: editEmail.trim() || undefined,
+        location: editLocation.trim(),
+        shift: editShift as 'matin' | 'après-midi' | 'soir'
+      };
 
-    setTeamMembers(updatedMembers);
+      const result = await updateEmployee(editingMember.id, updates);
+      
+      if (result.success) {
+        Alert.alert('Succès', 'Employé mis à jour avec succès');
     setShowEditMemberModal(false);
     setEditingMember(null);
-    Alert.alert('Succès', 'Informations du membre mises à jour');
+      } else {
+        Alert.alert('Erreur', result.error || 'Erreur lors de la mise à jour');
+      }
+    } catch (error) {
+      Alert.alert('Erreur', 'Erreur lors de la mise à jour de l\'employé');
+    }
   };
 
   const scheduleMeeting = () => {
@@ -335,69 +214,42 @@ export default function TeamTab() {
       Alert.alert('Erreur', 'Veuillez remplir tous les champs');
       return;
     }
-
-    // In a real app, this would save to calendar
-    Alert.alert('Réunion planifiée', `"${meetingTitle}" programmée pour ${meetingTime}`);
+    Alert.alert('Réunion planifiée', `Réunion "${meetingTitle}" planifiée pour ${meetingTime}`);
+    setShowMeetingModal(false);
     setMeetingTitle('');
     setMeetingTime('');
-    setShowMeetingModal(false);
   };
 
   const callMember = (phone: string, name: string) => {
-    Alert.alert('Appel', `Appel vers ${name} (${phone})`);
+    Alert.alert('Appel', `Appel en cours vers ${name} au ${phone}`);
   };
 
   const sendMessage = (email: string, name: string) => {
-    Alert.alert('Message', `Envoi d'un message à ${name} (${email})`);
+    Alert.alert('Message', `Message envoyé à ${name} à l'adresse ${email}`);
   };
 
   const removeMember = (memberId: number, memberName: string) => {
-    console.log('=== DÉBUT SUPPRESSION ===');
-    console.log('ID à supprimer:', memberId);
-    console.log('Nom à supprimer:', memberName);
-    console.log('État actuel du modal:', showDeleteConfirmModal);
-    
-    // Stocker les informations du membre à supprimer
     setMemberToDelete({ id: memberId, name: memberName });
-    
-    // Afficher le modal de confirmation
     setShowDeleteConfirmModal(true);
-    
-    console.log('Modal de confirmation activé');
-    console.log('=== FIN SUPPRESSION ===');
   };
 
-  const confirmDelete = () => {
-    console.log('=== DÉBUT CONFIRMATION ===');
-    console.log('memberToDelete:', memberToDelete);
-    
-    if (!memberToDelete) {
-      console.log('Aucun membre à supprimer');
-      return;
-    }
-    
-    console.log('Suppression confirmée pour:', memberToDelete.id);
-    const updatedMembers = teamMembers.filter(member => member.id !== memberToDelete.id);
-    console.log('Membres après suppression:', updatedMembers.length);
-    
-    setTeamMembers(updatedMembers);
-    
-    // Sauvegarder immédiatement
-    AsyncStorage.setItem('teamMembers', JSON.stringify(updatedMembers))
-      .then(() => {
-        console.log('Membre supprimé et sauvegardé');
+  const confirmDelete = async () => {
+    if (!memberToDelete) return;
+
+    try {
+      const result = await deleteEmployee(memberToDelete.id);
+      
+      if (result.success) {
         Alert.alert('Succès', `${memberToDelete.name} a été supprimé de l'équipe`);
-      })
-      .catch(error => {
-        console.error('Erreur lors de la sauvegarde:', error);
-        Alert.alert('Erreur', 'Erreur lors de la sauvegarde');
-      });
-    
-    // Fermer le modal
+      } else {
+        Alert.alert('Erreur', result.error || 'Erreur lors de la suppression');
+      }
+    } catch (error) {
+      Alert.alert('Erreur', 'Erreur lors de la suppression de l\'employé');
+    } finally {
     setShowDeleteConfirmModal(false);
     setMemberToDelete(null);
-    
-    console.log('=== FIN CONFIRMATION ===');
+    }
   };
 
   const cancelDelete = () => {
@@ -405,15 +257,15 @@ export default function TeamTab() {
     setMemberToDelete(null);
   };
 
-  // Fonction pour choisir une image
   const pickImage = async () => {
-    let result = await ImagePicker.launchImageLibraryAsync({
+    const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.7,
+      quality: 0.8,
     });
-    if (!result.canceled && result.assets && result.assets.length > 0) {
+
+    if (!result.canceled) {
       setEditAvatar(result.assets[0].uri);
     }
   };
@@ -424,13 +276,16 @@ export default function TeamTab() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={[styles.backButton, isDark ? styles.backButtonDark : styles.backButtonLight]}>
+            <ArrowLeft color={isDark ? "#f4f4f5" : "#3b82f6"} size={28} strokeWidth={2} />
+          </TouchableOpacity>
           <Users color="#3b82f6" size={32} strokeWidth={2} />
-          <Text style={styles.title}>Équipe Rayon</Text>
-          <Text style={styles.subtitle}>Gérez votre équipe de grande distribution</Text>
+          <Text style={[styles.title, isDark && styles.titleDark]}>Équipe {userProfile?.section || 'Rayon'}</Text>
+          <Text style={[styles.subtitle, isDark && styles.subtitleDark]}>Gérez votre équipe de {userProfile?.section || 'rayon'}</Text>
         </View>
 
         {/* Team Stats */}
@@ -438,26 +293,26 @@ export default function TeamTab() {
           <View style={styles.statCard}>
             <Users color="#3b82f6" size={20} strokeWidth={2} />
             <Text style={styles.statValue}>{teamMembers.length}</Text>
-            <Text style={styles.statLabel}>Membres</Text>
+            <Text style={styles.statLabel}>Employés</Text>
           </View>
           <View style={styles.statCard}>
             <Target color="#10b981" size={20} strokeWidth={2} />
             <Text style={styles.statValue}>
-              {Math.round(teamMembers.reduce((sum, m) => sum + m.performance, 0) / teamMembers.length)}%
+              {teamMembers.length > 0 ? Math.round(teamMembers.reduce((sum, m) => sum + m.performance, 0) / teamMembers.length) : 0}%
             </Text>
             <Text style={styles.statLabel}>Performance</Text>
           </View>
           <View style={styles.statCard}>
             <Clock color="#f59e0b" size={20} strokeWidth={2} />
             <Text style={styles.statValue}>
-              {teamMembers.filter(m => m.status === 'En ligne').length}
+              {teamMembers.filter(m => m.status === 'online').length}
             </Text>
             <Text style={styles.statLabel}>Actifs</Text>
           </View>
           <View style={styles.statCard}>
             <Target color="#8b5cf6" size={20} strokeWidth={2} />
             <Text style={styles.statValue}>
-              {teamMembers.reduce((sum, m) => sum + m.tasksCompleted, 0)}
+              {teamMembers.reduce((sum, m) => sum + m.tasks_completed, 0)}
             </Text>
             <Text style={styles.statLabel}>Tâches</Text>
           </View>
@@ -466,7 +321,7 @@ export default function TeamTab() {
         {/* Team Members */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Membres de l'équipe</Text>
+            <Text style={styles.sectionTitle}>Employés de la section</Text>
             <TouchableOpacity 
               style={styles.addButton}
               onPress={() => setShowAddMemberModal(true)}
@@ -475,15 +330,23 @@ export default function TeamTab() {
             </TouchableOpacity>
           </View>
           
-          {teamMembers
+          {teamMembers.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Users color="#9ca3af" size={48} strokeWidth={2} />
+              <Text style={styles.emptyStateText}>Aucun employé dans votre section</Text>
+              <Text style={styles.emptyStateSubtext}>Ajoutez des employés pour commencer</Text>
+            </View>
+          ) : (
+            teamMembers
             .filter(member => member.id !== null && member.id !== undefined && !isNaN(member.id))
             .map((member) => (
             <View key={member.id} style={styles.memberCard}>
               <View style={styles.memberHeader}>
-                <Image source={{ uri: member.avatar }} style={styles.avatar} />
+                <Image source={{ uri: member.avatar_url || 'https://via.placeholder.com/60' }} style={styles.avatar} />
                 <View style={styles.memberInfo}>
                   <Text style={styles.memberName}>{member.name}</Text>
                   <Text style={styles.memberRole}>{member.role}</Text>
+                      <Text style={styles.memberSection}>{member.section}</Text>
                   <View style={styles.statusContainer}>
                     <View 
                       style={[
@@ -491,7 +354,7 @@ export default function TeamTab() {
                         { backgroundColor: getStatusColor(member.status) }
                       ]} 
                     />
-                    <Text style={styles.statusText}>{member.status}</Text>
+                    <Text style={styles.statusText}>{getStatusText(member.status)}</Text>
                   </View>
                 </View>
                 <View style={styles.performanceContainer}>
@@ -512,21 +375,21 @@ export default function TeamTab() {
                 </View>
                 <View style={styles.detailRow}>
                   <Target color="#6b7280" size={16} strokeWidth={2} />
-                  <Text style={styles.detailText}>{member.tasksCompleted} tâches terminées</Text>
+                  <Text style={styles.detailText}>{member.tasks_completed} tâches terminées</Text>
                 </View>
               </View>
 
               <View style={styles.memberActions}>
                 <TouchableOpacity 
                   style={styles.actionButton}
-                  onPress={() => callMember(member.phone, member.name)}
+                  onPress={() => callMember(member.phone || '', member.name)}
                 >
                   <Phone color="#3b82f6" size={18} strokeWidth={2} />
                   <Text style={styles.actionButtonText}>Appeler</Text>
                 </TouchableOpacity>
                 <TouchableOpacity 
                   style={styles.actionButton}
-                  onPress={() => sendMessage(member.email, member.name)}
+                  onPress={() => sendMessage(member.email || '', member.name)}
                 >
                   <Mail color="#10b981" size={18} strokeWidth={2} />
                   <Text style={styles.actionButtonText}>Message</Text>
@@ -551,7 +414,8 @@ export default function TeamTab() {
                 </TouchableOpacity>
               </View>
             </View>
-          ))}
+              ))
+          )}
         </View>
 
         {/* Quick Actions */}
@@ -565,7 +429,7 @@ export default function TeamTab() {
             <View style={styles.quickActionIcon}>
               <UserPlus color="#3b82f6" size={20} strokeWidth={2} />
             </View>
-            <Text style={styles.quickActionText}>Ajouter un membre</Text>
+            <Text style={styles.quickActionText}>Ajouter un employé</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
@@ -597,7 +461,7 @@ export default function TeamTab() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Ajouter un membre</Text>
+              <Text style={styles.modalTitle}>Ajouter un employé</Text>
               <TouchableOpacity onPress={() => setShowAddMemberModal(false)}>
                 <X color="#6b7280" size={24} strokeWidth={2} />
               </TouchableOpacity>
@@ -623,6 +487,51 @@ export default function TeamTab() {
                 placeholder="Ex: Employé libre-service"
                 placeholderTextColor="#9ca3af"
               />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Section</Text>
+              <TextInput
+                style={styles.input}
+                value={newMemberSection}
+                onChangeText={setNewMemberSection}
+                placeholder={userProfile?.section || "Ex: fruits-legumes"}
+                placeholderTextColor="#9ca3af"
+              />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Localisation</Text>
+              <TextInput
+                style={styles.input}
+                value={newMemberLocation}
+                onChangeText={setNewMemberLocation}
+                placeholder="Ex: Zone 1, Entrepôt A"
+                placeholderTextColor="#9ca3af"
+              />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Équipe</Text>
+              <View style={styles.shiftSelector}>
+                {(['matin', 'après-midi', 'soir'] as const).map((shift) => (
+                  <TouchableOpacity
+                    key={shift}
+                    style={[
+                      styles.shiftOption,
+                      newMemberShift === shift && styles.shiftOptionSelected
+                    ]}
+                    onPress={() => setNewMemberShift(shift)}
+                  >
+                    <Text style={[
+                      styles.shiftOptionText,
+                      newMemberShift === shift && styles.shiftOptionTextSelected
+                    ]}>
+                      {shift.charAt(0).toUpperCase() + shift.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
 
             <View style={styles.modalActions}>
@@ -677,6 +586,17 @@ export default function TeamTab() {
                 value={editRole}
                 onChangeText={setEditRole}
                 placeholder="Poste"
+                placeholderTextColor="#9ca3af"
+              />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Section *</Text>
+              <TextInput
+                style={styles.input}
+                value={editSection}
+                onChangeText={setEditSection}
+                placeholder="Section"
                 placeholderTextColor="#9ca3af"
               />
             </View>
@@ -992,6 +912,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F5F5F5',
   },
+  containerDark: {
+    backgroundColor: '#18181b',
+  },
   scrollView: {
     flex: 1,
   },
@@ -1000,6 +923,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 80,
     paddingBottom: 32,
+    position: 'relative',
+  },
+  backButton: {
+    position: 'absolute',
+    left: 24,
+    top: 20,
+    zIndex: 10,
+    borderRadius: 8,
+    borderWidth: 2,
+    padding: 4,
+  },
+  backButtonLight: {
+    backgroundColor: '#e0e7ff',
+    borderColor: '#3b82f6',
+  },
+  backButtonDark: {
+    backgroundColor: '#2563eb',
+    borderColor: '#60a5fa',
+  },
+  backButtonText: {
+    color: '#f4f4f5',
+    fontSize: 16,
+    fontWeight: '600',
   },
   title: {
     fontSize: 28,
@@ -1008,10 +954,16 @@ const styles = StyleSheet.create({
     marginTop: 16,
     marginBottom: 8,
   },
+  titleDark: {
+    color: '#f4f4f5',
+  },
   subtitle: {
     fontSize: 16,
     color: '#6b7280',
     textAlign: 'center',
+  },
+  subtitleDark: {
+    color: '#a1a1aa',
   },
   statsContainer: {
     flexDirection: 'row',
@@ -1104,6 +1056,11 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   memberRole: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 8,
+  },
+  memberSection: {
     fontSize: 14,
     color: '#6b7280',
     marginBottom: 8,
@@ -1346,6 +1303,13 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '600',
   },
+  shiftOptionSelected: {
+    backgroundColor: '#3b82f6',
+  },
+  shiftOptionTextSelected: {
+    color: '#ffffff',
+    fontWeight: '600',
+  },
   presetList: {
     maxHeight: 300,
   },
@@ -1413,5 +1377,41 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#ffffff',
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 50,
+    marginTop: 50,
+  },
+  emptyStateText: {
+    fontSize: 18,
+    color: '#6b7280',
+    marginTop: 15,
+  },
+      emptyStateSubtext: {
+      fontSize: 14,
+      color: '#9ca3af',
+      marginTop: 5,
+    },
+    shiftSelector: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginTop: 8,
+    },
+    shiftOption: {
+      flex: 1,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: '#d1d5db',
+      backgroundColor: '#ffffff',
+      marginHorizontal: 4,
+      alignItems: 'center',
+    },
+    shiftOptionText: {
+      fontSize: 14,
+      color: '#374151',
+      fontWeight: '500',
   },
 });

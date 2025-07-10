@@ -19,6 +19,7 @@ import {
   X,
   Check
 } from 'lucide-react-native';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface Task {
   id: string;
@@ -32,6 +33,7 @@ interface Task {
 type ViewMode = 'month' | 'week' | 'day';
 
 export default function FutureTasksCalendar() {
+  const { isDark } = useTheme();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<ViewMode>('month');
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -208,6 +210,7 @@ export default function FutureTasksCalendar() {
           key={day}
           style={[
             styles.calendarDay,
+            isDark && styles.calendarDayDark,
             isToday && styles.today,
             dayTasks.length > 0 && styles.hasTasks
           ]}
@@ -216,7 +219,7 @@ export default function FutureTasksCalendar() {
             setShowAddModal(true);
           }}
         >
-          <Text style={[styles.dayNumber, isToday && styles.todayText]}>
+          <Text style={[styles.dayNumber, isDark && styles.dayNumberDark, isToday && styles.todayText]}>
             {day}
           </Text>
           {dayTasks.length > 0 && (
@@ -231,7 +234,7 @@ export default function FutureTasksCalendar() {
     return (
       <View style={styles.calendarGrid}>
         {['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'].map(day => (
-          <Text key={day} style={styles.weekdayHeader}>{day}</Text>
+          <Text key={day} style={[styles.weekdayHeader, isDark && styles.weekdayHeaderDark]}>{day}</Text>
         ))}
         {days}
       </View>
@@ -242,7 +245,7 @@ export default function FutureTasksCalendar() {
     const weekDays = getWeekDays(currentDate);
     
     return (
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+      <ScrollView horizontal contentContainerStyle={{flexGrow:1}} showsHorizontalScrollIndicator={false}>
         <View style={styles.weekContainer}>
           {weekDays.map((day, index) => {
             const dayTasks = getTasksForDate(day);
@@ -297,7 +300,7 @@ export default function FutureTasksCalendar() {
           </Text>
         </View>
         
-        <ScrollView style={styles.tasksList}>
+        <ScrollView style={styles.tasksList} contentContainerStyle={{flexGrow:1}}>
           {dayTasks.length === 0 ? (
             <View style={styles.emptyState}>
               <Calendar color="#6b7280" size={48} strokeWidth={1} />
@@ -358,15 +361,15 @@ export default function FutureTasksCalendar() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, isDark && styles.containerDark]}>
       {/* Header avec navigation et sélecteur de vue */}
       <View style={styles.header}>
         <View style={styles.navigation}>
           <TouchableOpacity onPress={() => navigateDate('prev')}>
-            <ChevronLeft color="#6b7280" size={24} strokeWidth={2} />
+            <ChevronLeft color={isDark ? "#a1a1aa" : "#6b7280"} size={24} strokeWidth={2} />
           </TouchableOpacity>
           
-          <Text style={styles.currentDateText}>
+          <Text style={[styles.currentDateText, isDark && styles.currentDateTextDark]}>
             {viewMode === 'month' && currentDate.toLocaleDateString('fr-FR', { 
               month: 'long', 
               year: 'numeric' 
@@ -383,7 +386,7 @@ export default function FutureTasksCalendar() {
           </Text>
           
           <TouchableOpacity onPress={() => navigateDate('next')}>
-            <ChevronRight color="#6b7280" size={24} strokeWidth={2} />
+            <ChevronRight color={isDark ? "#a1a1aa" : "#6b7280"} size={24} strokeWidth={2} />
           </TouchableOpacity>
         </View>
         
@@ -391,10 +394,18 @@ export default function FutureTasksCalendar() {
           {(['month', 'week', 'day'] as ViewMode[]).map(mode => (
             <TouchableOpacity
               key={mode}
-              style={[styles.viewModeButton, viewMode === mode && styles.activeViewMode]}
+              style={[
+                styles.viewModeButton, 
+                isDark && styles.viewModeButtonDark,
+                viewMode === mode && styles.activeViewMode
+              ]}
               onPress={() => setViewMode(mode)}
             >
-              <Text style={[styles.viewModeText, viewMode === mode && styles.activeViewModeText]}>
+              <Text style={[
+                styles.viewModeText, 
+                isDark && styles.viewModeTextDark,
+                viewMode === mode && styles.activeViewModeText
+              ]}>
                 {mode === 'month' ? 'Mois' : mode === 'week' ? 'Semaine' : 'Jour'}
               </Text>
             </TouchableOpacity>
@@ -403,7 +414,7 @@ export default function FutureTasksCalendar() {
         
         {/* Bouton pour accéder rapidement à des dates */}
         <TouchableOpacity 
-          style={styles.quickDateButton}
+          style={[styles.quickDateButton, isDark && styles.quickDateButtonDark]}
           onPress={() => {
             // Afficher un modal avec les options de dates rapides
             Alert.alert(
@@ -418,8 +429,8 @@ export default function FutureTasksCalendar() {
             );
           }}
         >
-          <Calendar color="#3b82f6" size={16} strokeWidth={2} />
-          <Text style={styles.quickDateButtonText}>Dates rapides</Text>
+          <Calendar color={isDark ? "#60a5fa" : "#3b82f6"} size={16} strokeWidth={2} />
+          <Text style={[styles.quickDateButtonText, isDark && styles.quickDateButtonTextDark]}>Dates rapides</Text>
         </TouchableOpacity>
       </View>
 
@@ -436,24 +447,26 @@ export default function FutureTasksCalendar() {
         onRequestClose={() => setShowAddModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, isDark && styles.modalContentDark]}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Nouvelle tâche</Text>
+              <Text style={[styles.modalTitle, isDark && styles.modalTitleDark]}>Nouvelle tâche</Text>
               <TouchableOpacity onPress={() => setShowAddModal(false)}>
-                <X color="#6b7280" size={24} strokeWidth={2} />
+                <X color={isDark ? "#a1a1aa" : "#6b7280"} size={24} strokeWidth={2} />
               </TouchableOpacity>
             </View>
             
             <TextInput
-              style={styles.input}
+              style={[styles.input, isDark && styles.inputDark]}
               placeholder="Titre de la tâche"
+              placeholderTextColor={isDark ? "#71717a" : "#9ca3af"}
               value={newTask.title}
               onChangeText={(text) => setNewTask({...newTask, title: text})}
             />
             
             <TextInput
-              style={[styles.input, styles.textArea]}
+              style={[styles.input, styles.textArea, isDark && styles.inputDark]}
               placeholder="Description (optionnel)"
+              placeholderTextColor={isDark ? "#71717a" : "#9ca3af"}
               value={newTask.description}
               onChangeText={(text) => setNewTask({...newTask, description: text})}
               multiline
@@ -461,14 +474,15 @@ export default function FutureTasksCalendar() {
             />
             
             <TextInput
-              style={styles.input}
+              style={[styles.input, isDark && styles.inputDark]}
               placeholder="Heure (HH:MM)"
+              placeholderTextColor={isDark ? "#71717a" : "#9ca3af"}
               value={newTask.time}
               onChangeText={(text) => setNewTask({...newTask, time: text})}
             />
             
             <View style={styles.prioritySelector}>
-              <Text style={styles.priorityLabel}>Priorité :</Text>
+              <Text style={[styles.priorityLabel, isDark && styles.priorityLabelDark]}>Priorité :</Text>
               {(['low', 'medium', 'high'] as const).map(priority => (
                 <TouchableOpacity
                   key={priority}
@@ -511,6 +525,9 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
+  containerDark: {
+    backgroundColor: '#27272a',
+  },
   header: {
     padding: 20,
     borderBottomWidth: 1,
@@ -526,6 +543,10 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#1a1a1a',
+    marginHorizontal: 16,
+  },
+  currentDateTextDark: {
+    color: '#ffffff',
   },
   viewModeSelector: {
     flexDirection: 'row',
@@ -540,6 +561,9 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     alignItems: 'center',
   },
+  viewModeButtonDark: {
+    backgroundColor: '#3f3f46',
+  },
   activeViewMode: {
     backgroundColor: '#ffffff',
     shadowColor: '#000',
@@ -553,6 +577,9 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#6b7280',
   },
+  viewModeTextDark: {
+    color: '#a1a1aa',
+  },
   activeViewModeText: {
     color: '#3b82f6',
     fontWeight: '600',
@@ -560,18 +587,22 @@ const styles = StyleSheet.create({
   quickDateButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f0f9ff',
+    backgroundColor: '#eff6ff',
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 6,
     borderRadius: 8,
-    marginTop: 12,
-    alignSelf: 'flex-start',
-    gap: 6,
+    marginLeft: 8,
+  },
+  quickDateButtonDark: {
+    backgroundColor: '#1e293b',
   },
   quickDateButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
     color: '#3b82f6',
+    marginLeft: 4,
+    fontSize: 12,
+  },
+  quickDateButtonTextDark: {
+    color: '#60a5fa',
   },
   calendarContent: {
     flex: 1,
@@ -588,6 +619,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#6b7280',
+    marginBottom: 8,
+  },
+  weekdayHeaderDark: {
+    color: '#a1a1aa',
   },
   calendarDay: {
     width: '14.28%',
@@ -597,6 +632,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#f1f5f9',
     position: 'relative',
+    width: 38,
+    height: 38,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
+    marginVertical: 2,
+  },
+  calendarDayDark: {
+    backgroundColor: '#18181b',
+  },
+  dayNumber: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#1a1a1a',
+  },
+  dayNumberDark: {
+    color: '#ffffff',
   },
   today: {
     backgroundColor: '#3b82f6',
@@ -608,11 +660,6 @@ const styles = StyleSheet.create({
   },
   hasTasks: {
     backgroundColor: '#fef3c7',
-  },
-  dayNumber: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#1a1a1a',
   },
   taskIndicator: {
     position: 'absolute',
@@ -766,6 +813,17 @@ const styles = StyleSheet.create({
     padding: 24,
     width: '90%',
     maxWidth: 400,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: -2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  modalContentDark: {
+    backgroundColor: '#27272a',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -775,16 +833,23 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#1a1a1a',
   },
+  modalTitleDark: {
+    color: '#ffffff',
+  },
   input: {
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
+    backgroundColor: '#f8fafc',
     borderRadius: 8,
     padding: 12,
+    marginBottom: 12,
     fontSize: 16,
-    marginBottom: 16,
+    color: '#1a1a1a',
+  },
+  inputDark: {
+    backgroundColor: '#18181b',
+    color: '#ffffff',
   },
   textArea: {
     height: 80,
@@ -798,8 +863,12 @@ const styles = StyleSheet.create({
   },
   priorityLabel: {
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: '600',
     color: '#1a1a1a',
+    marginRight: 12,
+  },
+  priorityLabelDark: {
+    color: '#ffffff',
   },
   priorityOption: {
     paddingHorizontal: 12,

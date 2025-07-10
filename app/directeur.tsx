@@ -289,7 +289,7 @@ export default function DirecteurDashboard() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.scrollView} contentContainerStyle={{flexGrow:1}} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerContent}>
@@ -302,6 +302,12 @@ export default function DirecteurDashboard() {
               onPress={() => router.push('/user-management')}
             >
               <Settings color="#3b82f6" size={24} strokeWidth={2} />
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.employeeManagementButton}
+              onPress={() => router.push('/employee-management')}
+            >
+              <Users color="#10b981" size={24} strokeWidth={2} />
             </TouchableOpacity>
             <TouchableOpacity style={styles.alertButton}>
               <Bell color="#ef4444" size={24} strokeWidth={2} />
@@ -557,6 +563,23 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   userManagementButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#ffffff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  employeeManagementButton: {
     width: 40,
     height: 40,
     borderRadius: 20,

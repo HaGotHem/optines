@@ -31,6 +31,15 @@ export interface NotificationData {
   type: 'task_reminder' | 'conflict_alert' | 'employee_update' | 'general';
 }
 
+export interface NotificationHistoryItem {
+  id: string;
+  title: string;
+  body: string;
+  data?: any;
+  date: string; // ISO string
+  read: boolean;
+}
+
 export const useNotifications = () => {
   const [expoPushToken, setExpoPushToken] = useState<string | undefined>();
   const [notification, setNotification] = useState<Notifications.Notification>();
@@ -40,17 +49,26 @@ export const useNotifications = () => {
     employeeUpdates: true,
     reminderTime: 15, // 15 minutes par défaut
   });
+  const [notificationsHistory, setNotificationsHistory] = useState<NotificationHistoryItem[]>([]);
   const notificationListener = useRef<Notifications.Subscription | null>(null);
   const responseListener = useRef<Notifications.Subscription | null>(null);
 
   // Initialiser les notifications
   useEffect(() => {
+    // Désactiver toute la logique push sur le web
+    if (Platform.OS === 'web') {
+      console.log('Notifications push non supportées sur web');
+      return;
+    }
+
     registerForPushNotificationsAsync();
     loadNotificationSettings();
+    loadNotificationsHistory();
 
     // Écouter les notifications reçues
     notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
       setNotification(notification);
+      addNotificationToHistory(notification);
     });
 
     // Écouter les réponses aux notifications
@@ -61,13 +79,63 @@ export const useNotifications = () => {
 
     return () => {
       if (notificationListener.current) {
-        Notifications.removeNotificationSubscription(notificationListener.current);
+        notificationListener.current.remove();
       }
       if (responseListener.current) {
-        Notifications.removeNotificationSubscription(responseListener.current);
+        responseListener.current.remove();
       }
     };
   }, []);
+
+  // Ajouter une notification à l'historique
+  const addNotificationToHistory = async (notif: Notifications.Notification) => {
+    const item: NotificationHistoryItem = {
+      id: notif.request.identifier || Date.now().toString(),
+      title: notif.request.content.title,
+      body: notif.request.content.body,
+      data: notif.request.content.data,
+      date: new Date().toISOString(),
+      read: false,
+    };
+    try {
+      const existing = await AsyncStorage.getItem('notificationsHistory');
+      const arr: NotificationHistoryItem[] = existing ? JSON.parse(existing) : [];
+      arr.unshift(item); // Ajoute en haut
+      await AsyncStorage.setItem('notificationsHistory', JSON.stringify(arr));
+      setNotificationsHistory(arr);
+    } catch (e) {
+      console.error('Erreur ajout historique notif', e);
+    }
+  };
+
+  // Charger l'historique
+  const loadNotificationsHistory = async () => {
+    try {
+      const existing = await AsyncStorage.getItem('notificationsHistory');
+      setNotificationsHistory(existing ? JSON.parse(existing) : []);
+    } catch (e) {
+      setNotificationsHistory([]);
+    }
+  };
+
+  // Vider l'historique
+  const clearNotificationsHistory = async () => {
+    await AsyncStorage.removeItem('notificationsHistory');
+    setNotificationsHistory([]);
+  };
+
+  // Marquer une notification comme lue
+  const markNotificationRead = async (id: string) => {
+    try {
+      const arr = [...notificationsHistory];
+      const idx = arr.findIndex(n => n.id === id);
+      if (idx !== -1) {
+        arr[idx].read = true;
+        await AsyncStorage.setItem('notificationsHistory', JSON.stringify(arr));
+        setNotificationsHistory(arr);
+      }
+    } catch (e) {}
+  };
 
   // Enregistrer pour les notifications push
   const registerForPushNotificationsAsync = async () => {
@@ -274,6 +342,10 @@ export const useNotifications = () => {
   return {
     expoPushToken,
     notification,
+    notificationsHistory,
+    addNotificationToHistory,
+    clearNotificationsHistory,
+    markNotificationRead,
     settings,
     scheduleLocalNotification,
     sendImmediateNotification,

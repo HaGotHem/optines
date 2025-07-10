@@ -15,9 +15,10 @@ import {
   Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { User, Lock, Eye, EyeOff, ArrowLeft } from 'lucide-react-native';
+import { User, Lock, Eye, EyeOff, ArrowLeft, Package, Mail, AlertCircle } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useUserDatabase } from '../hooks/useUserDatabase';
+import { useSupabaseAuth } from '../hooks/useSupabaseAuth';
+import { useTheme } from '../contexts/ThemeContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function LoginScreen() {
@@ -25,11 +26,14 @@ export default function LoginScreen() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [dimensions, setDimensions] = useState(Dimensions.get('window'));
   const [showErrorPopup, setShowErrorPopup] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [lastUsername, setLastUsername] = useState('');
+  const { isDark } = useTheme();
+
+  // Nouveau hook Supabase Auth
+  const { login, isLoading, error: authError } = useSupabaseAuth();
 
   // Obtenir les dimensions de l'écran avec listener pour les changements
   const { width: screenWidth, height: screenHeight } = dimensions;
@@ -38,13 +42,13 @@ export default function LoginScreen() {
 
   // Log pour debug
   React.useEffect(() => {
-    console.log('📱 Dimensions détectées:', {
-      width: screenWidth,
-      height: screenHeight,
-      isTablet,
-      isLargeScreen,
-      platform: Platform.OS
-    });
+    // console.log('📱 Dimensions détectées:', {
+    //   width: screenWidth,
+    //   height: screenHeight,
+    //   isTablet,
+    //   isLargeScreen,
+    //   platform: Platform.OS
+    // });
   }, [screenWidth, screenHeight, isTablet, isLargeScreen]);
 
   // Animations pour améliorer la réactivité
@@ -54,8 +58,6 @@ export default function LoginScreen() {
   const popupScaleAnim = React.useRef(new Animated.Value(0)).current;
   const popupOpacityAnim = React.useRef(new Animated.Value(0)).current;
 
-  const { users, loading: dbLoading, authenticateUser } = useUserDatabase();
-
   const isManager = userType === 'manager';
   const isDirector = userType === 'director';
 
@@ -64,12 +66,12 @@ export default function LoginScreen() {
     setUsername(text);
     // Sauvegarder l'identifiant même s'il est vide (pour garder le dernier saisi)
     setLastUsername(text);
-    console.log('🔍 Identifiant saisi:', text, '-> lastUsername:', text);
+    // console.log('🔍 Identifiant saisi:', text, '-> lastUsername:', text);
     
     // Sauvegarder dans AsyncStorage
     if (text.trim()) {
       AsyncStorage.setItem('lastUsername', text.trim()).catch(error => {
-        console.log('❌ Erreur lors de la sauvegarde de l\'identifiant:', error);
+        // console.log('❌ Erreur lors de la sauvegarde de l\'identifiant:', error);
       });
     }
     
@@ -153,26 +155,33 @@ export default function LoginScreen() {
         const savedUsername = await AsyncStorage.getItem('lastUsername');
         if (savedUsername) {
           setLastUsername(savedUsername);
-          console.log('📱 Identifiant chargé depuis le stockage:', savedUsername);
+          // console.log('📱 Identifiant chargé depuis le stockage:', savedUsername);
         }
       } catch (error) {
-        console.log('❌ Erreur lors du chargement de l\'identifiant:', error);
+        // console.log('❌ Erreur lors du chargement de l\'identifiant:', error);
       }
     };
     
     loadLastUsername();
   }, []);
 
+  // Gérer les erreurs d'authentification Supabase
+  React.useEffect(() => {
+    if (authError) {
+      setErrorMessage(authError);
+      setShowErrorPopup(true);
+      showPopup();
+    }
+  }, [authError, showPopup]);
+
   // Optimisation des callbacks
-  const handleLogin = useCallback(() => {
+  const handleLogin = useCallback(async () => {
     if (!username.trim() || !password.trim()) {
       setErrorMessage('Veuillez remplir tous les champs');
       setShowErrorPopup(true);
       showPopup();
       return;
     }
-
-    setLoading(true);
 
     // Animation du bouton simplifiée
     Animated.timing(buttonScaleAnim, {
@@ -187,45 +196,22 @@ export default function LoginScreen() {
       }).start();
     });
 
-    // Connexion optimisée avec délai réduit
-    InteractionManager.runAfterInteractions(() => {
+    // Connexion avec Supabase
+    InteractionManager.runAfterInteractions(async () => {
       const role = isManager ? 'manager' : 'director';
-      const user = authenticateUser(username.trim(), password.trim(), role);
+      const result = await login(username.trim(), password.trim(), role);
 
-      if (user) {
-        if (!user.isActive) {
-          setLoading(false);
-          setErrorMessage('Ce compte est désactivé. Contactez l\'administrateur.');
-          setShowErrorPopup(true);
-          showPopup();
-          return;
-        }
-        
-        // Sauvegarder l'identifiant de la connexion réussie
-        setLastUsername(username.trim());
-        console.log('✅ Connexion réussie - Identifiant sauvegardé:', username.trim());
-        
-        // Sauvegarder dans AsyncStorage
-        AsyncStorage.setItem('lastUsername', username.trim()).catch(error => {
-          console.log('❌ Erreur lors de la sauvegarde de l\'identifiant:', error);
-        });
-        
-        setLoading(false);
-        
-        // Navigation immédiate
-        if (isManager) {
+      if (result.success) {
+        // Redirection basée sur le rôle
+        if (role === 'manager') {
           router.replace('/(manager-tabs)');
         } else {
           router.replace('/directeur');
         }
-      } else {
-        setLoading(false);
-        setErrorMessage('Identifiant ou mot de passe incorrect');
-        setShowErrorPopup(true);
-        showPopup();
       }
+      // L'erreur sera gérée par le useEffect qui écoute authError
     });
-  }, [username, password, isManager, authenticateUser, buttonScaleAnim, showPopup]);
+  }, [username, password, isManager, login, showPopup, buttonScaleAnim]);
 
   const quickLogin = useCallback((userExample: any) => {
     if (!userExample.isActive) {
@@ -248,7 +234,7 @@ export default function LoginScreen() {
 
   // Fonction de connexion rapide avec le dernier identifiant
   const quickLoginWithLastUsername = useCallback(() => {
-    console.log('🚀 Pré-remplissage avec l\'identifiant:', lastUsername);
+    // console.log('🚀 Pré-remplissage avec l\'identifiant:', lastUsername);
     if (!lastUsername) {
       setErrorMessage('Aucun identifiant précédent disponible. Veuillez saisir un identifiant d\'abord.');
       setShowErrorPopup(true);
@@ -265,12 +251,12 @@ export default function LoginScreen() {
 
   // Fonction de connexion rapide pour le développement
   const handleDevQuickLogin = useCallback(() => {
-    console.log('🚀 Connexion rapide DEV activée');
+    // console.log('🚀 Connexion rapide DEV activée');
     
     // Utiliser les identifiants de test selon le rôle
     if (isManager) {
-      setUsername('maxime.r');
-      setPassword('MR2024!');
+      setUsername('manager1');
+      setPassword('test');
     } else {
       setUsername('admin.directeur');
       setPassword('ADMIN2024!');
@@ -396,103 +382,90 @@ export default function LoginScreen() {
     if (errorMessage) setErrorMessage('');
   }, [errorMessage]);
 
-  if (dbLoading) {
+  if (isLoading) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Chargement de la base de données...</Text>
+          <Text style={styles.loadingText}>Chargement...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <Animated.View 
-        style={[
-          styles.keyboardView,
-          {
-            transform: [{ translateX: slideAnim }]
-          }
-        ]}
-      >
-        <KeyboardAvoidingView 
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={{ flex: 1 }}
-        >
+    <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
+      <Animated.View style={{ flex: 1 }}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView 
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
+            style={{ flex: 1 }}
+            contentContainerStyle={{
+              flexGrow: 1,
+              paddingBottom: Platform.OS === 'web' ? 40 : 20,
+              alignItems: 'stretch',
+              justifyContent: 'flex-start',
+            }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           removeClippedSubviews={true}
         >
-          {/* Header */}
-          <Animated.View 
-            style={[
-              styles.header,
-              {
-                opacity: fadeAnim
-              }
-            ]}
-          >
+            <View style={styles.header}>
             <TouchableOpacity 
-              style={styles.backButton}
               onPress={() => router.back()}
+                style={[styles.backButton, isDark && { backgroundColor: '#18181b', borderColor: '#27272a' }]}
               activeOpacity={0.7}
+                accessibilityLabel="Retour"
             >
-              <ArrowLeft color="#6b7280" size={24} strokeWidth={2} />
+                <ArrowLeft size={24} color={isDark ? '#fff' : '#222'} />
             </TouchableOpacity>
-            
-            <View style={styles.headerContent}>
-              <Text style={dynamicStyles.title}>Connexion</Text>
-              <Text style={dynamicStyles.subtitle}>
-                {isManager ? 'Espace Manager' : 'Espace Directeur'}
+            </View>
+            {/* Bandeau différencié manager/directeur */}
+            <View style={[
+              styles.userTypeIndicator,
+              isManager && { backgroundColor: '#3b82f6' },
+              isDirector && { backgroundColor: '#10b981' },
+            ]}>
+              {isManager ? (
+                <User color="#fff" size={24} />
+              ) : (
+                <User color="#fff" size={24} />
+              )}
+              <Text style={styles.userTypeText}>
+                {isManager ? 'Espace Manager' : isDirector ? 'Espace Directeur' : ''}
               </Text>
             </View>
-          </Animated.View>
-
-          {/* Login Form */}
-          <Animated.View 
-            style={[
-              dynamicStyles.formContainer,
-              {
-                opacity: fadeAnim
-              }
-            ]}
-          >
-            <LinearGradient
-              colors={['#ffffff', '#f8f9fa']}
-              style={dynamicStyles.formCard}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
-              {/* User Type Indicator */}
-              <View style={[
-                styles.userTypeIndicator,
-                { backgroundColor: isManager ? '#3b82f6' : '#10b981' }
-              ]}>
-                <User color="#ffffff" size={24} strokeWidth={2} />
-                <Text style={styles.userTypeText}>
-                  {isManager ? 'Manager' : 'Directeur'}
-                </Text>
+            {/* Fond décoratif adapté */}
+            <View style={[
+              styles.background,
+              isManager && { backgroundColor: '#3b82f6' },
+              isDirector && { backgroundColor: '#10b981' },
+              isDark && styles.backgroundDark
+            ]} />
+            
+            <View style={styles.content}>
+              <View style={styles.logoContainer}>
+                <View style={[styles.logoCircle, isDark && styles.logoCircleDark]}>
+                  <Package color={isDark ? "#60a5fa" : "#3b82f6"} size={48} strokeWidth={2} />
+          </View>
+                <Text style={[styles.logoText, isDark && styles.logoTextDark]}>OptineS</Text>
+                <Text style={[styles.tagline, isDark && styles.taglineDark]}>Gestion d'équipe simplifiée</Text>
               </View>
 
-              {/* Username Input */}
+              <View style={[styles.formContainer, isDark && styles.formContainerDark]}>
+                <Text style={[styles.title, isDark && styles.titleDark]}>Connexion</Text>
+                
               <View style={styles.inputContainer}>
-                <Text style={dynamicStyles.inputLabel}>Identifiant</Text>
-                <View style={dynamicStyles.inputWrapper}>
-                  <User color="#6b7280" size={20} strokeWidth={2} />
+                  <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
+                    <Mail color={isDark ? "#a1a1aa" : "#6b7280"} size={20} strokeWidth={2} />
                   <TextInput
-                    style={dynamicStyles.input}
-                    value={username}
-                    onChangeText={handleUsernameChange}
-                    placeholder="prenom.n"
-                    placeholderTextColor="#9ca3af"
+                      style={[styles.input, isDark && styles.inputDark]}
+                      placeholder="Email"
+                      placeholderTextColor={isDark ? "#71717a" : "#9ca3af"}
                     autoCapitalize="none"
                     autoCorrect={false}
                     returnKeyType="next"
                     blurOnSubmit={false}
+                      value={username}
+                      onChangeText={handleUsernameChange}
                   />
                 </View>
                 <Text style={styles.inputHint}>
@@ -500,22 +473,20 @@ export default function LoginScreen() {
                 </Text>
               </View>
 
-              {/* Password Input */}
               <View style={styles.inputContainer}>
-                <Text style={dynamicStyles.inputLabel}>Mot de passe</Text>
-                <View style={dynamicStyles.inputWrapper}>
-                  <Lock color="#6b7280" size={20} strokeWidth={2} />
+                  <View style={[styles.inputWrapper, isDark && styles.inputWrapperDark]}>
+                    <Lock color={isDark ? "#a1a1aa" : "#6b7280"} size={20} strokeWidth={2} />
                   <TextInput
-                    style={dynamicStyles.input}
-                    value={password}
-                    onChangeText={handlePasswordChange}
+                      style={[styles.input, isDark && styles.inputDark]}
                     placeholder="Mot de passe"
-                    placeholderTextColor="#9ca3af"
+                      placeholderTextColor={isDark ? "#71717a" : "#9ca3af"}
                     secureTextEntry={!showPassword}
                     autoCapitalize="none"
                     autoCorrect={false}
                     returnKeyType="done"
                     onSubmitEditing={handleLogin}
+                      value={password}
+                      onChangeText={handlePasswordChange}
                   />
                   <TouchableOpacity
                     style={dynamicStyles.eyeButton}
@@ -556,14 +527,14 @@ export default function LoginScreen() {
                   style={[
                     dynamicStyles.loginButton,
                     { backgroundColor: isManager ? '#3b82f6' : '#10b981' },
-                    loading && styles.loginButtonDisabled
+                    isLoading && styles.loginButtonDisabled
                   ]}
                   onPress={handleLogin}
-                  disabled={loading}
+                  disabled={isLoading}
                   activeOpacity={0.8}
                 >
                   <Text style={dynamicStyles.loginButtonText}>
-                    {loading ? 'Connexion...' : 'Se connecter'}
+                    {isLoading ? 'Connexion...' : 'Se connecter'}
                   </Text>
                 </TouchableOpacity>
               </Animated.View>
@@ -596,13 +567,11 @@ export default function LoginScreen() {
                   Problème de connexion ? Contactez l'administrateur système.
                 </Text>
               </View>
-            </LinearGradient>
-          </Animated.View>
+              </View> {/* fermeture du formContainer */}
+            </View> {/* fermeture du content */}
         </ScrollView>
         </KeyboardAvoidingView>
       </Animated.View>
-
-      {/* Error Popup */}
       {showErrorPopup && (
         <Animated.View 
           style={[
@@ -645,6 +614,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f8fafc',
   },
+  containerDark: {
+    backgroundColor: '#18181b',
+  },
   keyboardView: {
     flex: 1,
   },
@@ -657,17 +629,20 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Platform.OS === 'web' ? 40 : 24,
-    paddingTop: Platform.OS === 'web' ? 32 : 16,
-    paddingBottom: Platform.OS === 'web' ? 24 : 16,
-    marginBottom: Platform.OS === 'web' ? 16 : 8,
+    alignItems: 'flex-start',
+    marginTop: Platform.OS === 'web' ? 32 : 24,
+    marginLeft: Platform.OS === 'web' ? 24 : 12,
+    zIndex: 10,
   },
   backButton: {
     padding: Platform.OS === 'web' ? 16 : 8,
     marginRight: Platform.OS === 'web' ? 20 : 12,
+    marginTop: Platform.OS === 'web' ? 0 : 0, // géré par le header
+    alignSelf: 'flex-start',
     borderRadius: Platform.OS === 'web' ? 12 : 8,
     backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
     ...Platform.select({
       web: {
         boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.1)',
@@ -845,5 +820,137 @@ const styles = StyleSheet.create({
     fontSize: Platform.OS === 'web' ? 20 : 14,
     fontWeight: '600',
     color: '#f59e0b',
+  },
+  background: {
+    position: 'absolute',
+    top: -200,
+    left: -100,
+    right: -100,
+    height: 600,
+    backgroundColor: '#3b82f6',
+    borderRadius: 300,
+    opacity: 0.1,
+  },
+  backgroundDark: {
+    backgroundColor: '#60a5fa',
+    opacity: 0.05,
+  },
+  content: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingTop: Platform.OS === 'web' ? 100 : 50,
+  },
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  logoCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#f0f9ff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+    shadowColor: '#3b82f6',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  logoCircleDark: {
+    backgroundColor: '#1e293b',
+    shadowColor: '#60a5fa',
+  },
+  logoText: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: '#1a1a1a',
+    marginBottom: 8,
+  },
+  logoTextDark: {
+    color: '#ffffff',
+  },
+  tagline: {
+    fontSize: 16,
+    color: '#6b7280',
+    fontWeight: '500',
+  },
+  taglineDark: {
+    color: '#a1a1aa',
+  },
+  formContainer: {
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    padding: 32,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 8,
+    },
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
+    elevation: 8,
+  },
+  formContainerDark: {
+    backgroundColor: '#27272a',
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  titleDark: {
+    color: '#ffffff',
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  inputWrapperDark: {
+    backgroundColor: '#18181b',
+    borderColor: '#3f3f46',
+  },
+  input: {
+    flex: 1,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    fontSize: 16,
+    color: '#1a1a1a',
+  },
+  inputDark: {
+    color: '#ffffff',
+  },
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fee2e2',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 12,
+  },
+  errorContainerDark: {
+    backgroundColor: '#7f1d1d',
+  },
+  errorText: {
+    color: '#ef4444',
+    marginLeft: 8,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  errorTextDark: {
+    color: '#fca5a5',
   },
 });

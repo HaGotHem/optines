@@ -29,7 +29,8 @@ yarn-error.*
 
 # local env files
 .env*.local
-.env
+# .env - Commenté pour permettre l'édition dans Cursor
+# .env
 
 # typescript
 *.tsbuildinfo

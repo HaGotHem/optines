@@ -124,14 +124,14 @@ export const useTaskStats = () => {
       const actualPackagesPerHour = completedTasksHours > 0 ? Math.round(completedTasksPackages / completedTasksHours) : packagesPerHour;
 
       setStats({
-        totalPackages,
-        totalTasks,
-        completedTasks,
-        totalTeamMembers,
-        averagePackagesPerTask,
-        averageTeamSize,
-        completionRate,
-        packagesPerHour: actualPackagesPerHour,
+        totalPackages: totalPackages || 0,
+        totalTasks: totalTasks || 0,
+        completedTasks: completedTasks || 0,
+        totalTeamMembers: totalTeamMembers || 0,
+        averagePackagesPerTask: averagePackagesPerTask || 0,
+        averageTeamSize: averageTeamSize || 0,
+        completionRate: completionRate || 0,
+        packagesPerHour: actualPackagesPerHour || 0,
       });
     } catch (error) {
       console.error('Erreur lors du chargement des statistiques:', error);

@@ -8,58 +8,61 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BarChart3, TrendingUp, Users, DollarSign } from 'lucide-react-native';
+import { useTheme } from '../../contexts/ThemeContext';
 
 export default function AnalyticsTab() {
+  const { isDark } = useTheme();
+  
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title}>Analytics</Text>
-          <Text style={styles.subtitle}>Vue d'ensemble des performances</Text>
+          <Text style={[styles.title, isDark && styles.titleDark]}>Analytics</Text>
+          <Text style={[styles.subtitle, isDark && styles.subtitleDark]}>Vue d'ensemble des performances</Text>
         </View>
 
         {/* Metrics Grid */}
         <View style={styles.metricsGrid}>
-          <View style={styles.metricCard}>
-            <View style={styles.metricIcon}>
+          <View style={[styles.metricCard, isDark && styles.metricCardDark]}>
+            <View style={[styles.metricIcon, isDark && styles.metricIconDark]}>
               <TrendingUp color="#10b981" size={24} strokeWidth={2} />
             </View>
-            <Text style={styles.metricValue}>€12,450</Text>
-            <Text style={styles.metricLabel}>Revenus</Text>
+            <Text style={[styles.metricValue, isDark && styles.metricValueDark]}>€12,450</Text>
+            <Text style={[styles.metricLabel, isDark && styles.metricLabelDark]}>Revenus</Text>
             <Text style={styles.metricChange}>+8.2%</Text>
           </View>
 
-          <View style={styles.metricCard}>
-            <View style={styles.metricIcon}>
+          <View style={[styles.metricCard, isDark && styles.metricCardDark]}>
+            <View style={[styles.metricIcon, isDark && styles.metricIconDark]}>
               <Users color="#3b82f6" size={24} strokeWidth={2} />
             </View>
-            <Text style={styles.metricValue}>1,247</Text>
-            <Text style={styles.metricLabel}>Clients</Text>
+            <Text style={[styles.metricValue, isDark && styles.metricValueDark]}>1,247</Text>
+            <Text style={[styles.metricLabel, isDark && styles.metricLabelDark]}>Clients</Text>
             <Text style={styles.metricChange}>+12.5%</Text>
           </View>
 
-          <View style={styles.metricCard}>
-            <View style={styles.metricIcon}>
+          <View style={[styles.metricCard, isDark && styles.metricCardDark]}>
+            <View style={[styles.metricIcon, isDark && styles.metricIconDark]}>
               <BarChart3 color="#f59e0b" size={24} strokeWidth={2} />
             </View>
-            <Text style={styles.metricValue}>89%</Text>
-            <Text style={styles.metricLabel}>Satisfaction</Text>
+            <Text style={[styles.metricValue, isDark && styles.metricValueDark]}>89%</Text>
+            <Text style={[styles.metricLabel, isDark && styles.metricLabelDark]}>Satisfaction</Text>
             <Text style={styles.metricChange}>+2.1%</Text>
           </View>
 
-          <View style={styles.metricCard}>
-            <View style={styles.metricIcon}>
+          <View style={[styles.metricCard, isDark && styles.metricCardDark]}>
+            <View style={[styles.metricIcon, isDark && styles.metricIconDark]}>
               <DollarSign color="#ef4444" size={24} strokeWidth={2} />
             </View>
-            <Text style={styles.metricValue}>€892</Text>
-            <Text style={styles.metricLabel}>Coût/Client</Text>
+            <Text style={[styles.metricValue, isDark && styles.metricValueDark]}>€892</Text>
+            <Text style={[styles.metricLabel, isDark && styles.metricLabelDark]}>Coût/Client</Text>
             <Text style={styles.metricChange}>-3.4%</Text>
           </View>
         </View>
 
         {/* Chart Placeholder */}
-        <View style={styles.chartContainer}>
+        <View style={[styles.chartContainer, isDark && styles.chartContainerDark]}>
           <LinearGradient
             colors={['#3b82f6', '#1d4ed8']}
             style={styles.chartHeader}
@@ -70,10 +73,10 @@ export default function AnalyticsTab() {
             <Text style={styles.chartSubtitle}>30 derniers jours</Text>
           </LinearGradient>
           <View style={styles.chartBody}>
-            <Text style={styles.chartPlaceholder}>
+            <Text style={[styles.chartPlaceholder, isDark && styles.chartPlaceholderDark]}>
               Graphique des performances
             </Text>
-            <Text style={styles.chartNote}>
+            <Text style={[styles.chartNote, isDark && styles.chartNoteDark]}>
               Les données seront affichées ici
             </Text>
           </View>
@@ -87,6 +90,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F5F5F5',
+  },
+  containerDark: {
+    backgroundColor: '#18181b',
   },
   scrollView: {
     flex: 1,
@@ -102,10 +108,16 @@ const styles = StyleSheet.create({
     color: '#1a1a1a',
     marginBottom: 4,
   },
+  titleDark: {
+    color: '#ffffff',
+  },
   subtitle: {
     fontSize: 16,
     color: '#6b7280',
     fontWeight: '400',
+  },
+  subtitleDark: {
+    color: '#a1a1aa',
   },
   metricsGrid: {
     flexDirection: 'row',
@@ -128,6 +140,9 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  metricCardDark: {
+    backgroundColor: '#27272a',
+  },
   metricIcon: {
     width: 40,
     height: 40,
@@ -137,17 +152,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
+  metricIconDark: {
+    backgroundColor: '#3f3f46',
+  },
   metricValue: {
     fontSize: 24,
     fontWeight: '700',
     color: '#1a1a1a',
     marginBottom: 4,
   },
+  metricValueDark: {
+    color: '#ffffff',
+  },
   metricLabel: {
     fontSize: 14,
     color: '#6b7280',
     fontWeight: '500',
     marginBottom: 8,
+  },
+  metricLabelDark: {
+    color: '#a1a1aa',
   },
   metricChange: {
     fontSize: 12,
@@ -167,6 +191,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 8,
     elevation: 6,
+  },
+  chartContainerDark: {
+    backgroundColor: '#27272a',
   },
   chartHeader: {
     padding: 20,
@@ -194,9 +221,15 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 8,
   },
+  chartPlaceholderDark: {
+    color: '#a1a1aa',
+  },
   chartNote: {
     fontSize: 14,
     color: '#9ca3af',
     textAlign: 'center',
+  },
+  chartNoteDark: {
+    color: '#71717a',
   },
 });

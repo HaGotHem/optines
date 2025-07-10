@@ -345,7 +345,7 @@ export class NotificationService {
 
     // Ne programmer que pour les rappels futurs
     if (reminderDate > now) {
-      await this.notificationHook.scheduleNotification(
+      await this.notificationHook.scheduleLocalNotification(
         reminder.id,
         'Rappel tâche',
         reminder.message,

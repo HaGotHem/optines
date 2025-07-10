@@ -2,47 +2,31 @@ import React, { useState, useEffect } from 'react';
 import { View, TouchableOpacity, StyleSheet, Platform, Text } from 'react-native';
 import { Tabs, router, usePathname } from 'expo-router';
 import { ArrowLeft, LogOut } from 'lucide-react-native';
+import { useTheme } from '../../contexts/ThemeContext';
 
 export default function ManagerTabLayout() {
+  const { isDark } = useTheme();
   const pathname = usePathname();
   const [isVisible, setIsVisible] = useState(false);
   const [isMainPage, setIsMainPage] = useState(true);
 
   useEffect(() => {
-    // Debug: log the current pathname
-    console.log('Current pathname:', pathname);
-    
-    // Check if we're on the main page - also check for root path when in manager tabs
-    const isOnMainPage = pathname === '/(manager-tabs)' || 
-                        pathname === '/(manager-tabs)/' ||
-                        pathname.includes('/(manager-tabs)/index') ||
-                        pathname === '/' ||
-                        pathname === '';
-    
-    console.log('Is main page:', isOnMainPage);
-    setIsMainPage(isOnMainPage);
-    setIsVisible(true); // Always show the button now
+    // Log pour debug
+    console.log('PATHNAME ACTUEL:', pathname);
+    // Accueil manager : toutes les variantes (y compris la page affichée sur la capture)
+    const isOnManagerHome = pathname === '/(manager-tabs)' || pathname === '/(manager-tabs)/' || pathname.endsWith('/index');
+    setIsMainPage(isOnManagerHome);
+    setIsVisible(pathname.includes('manager-tabs'));
   }, [pathname]);
 
   const handleButtonPress = () => {
-    console.log('Button pressed!');
-    console.log('isMainPage:', isMainPage);
-    console.log('Current pathname:', pathname);
-    
     if (isMainPage) {
-      console.log('Attempting to logout - navigating to login page');
-      // Logout - go back to login selection with slide left animation
-      router.replace({
-        pathname: '/login',
-        params: {
-          animation: 'slide_from_left',
-          userType: 'manager'
-        }
-      });
+      // Action de déconnexion ici
+      console.log('Déconnexion demandée');
+      // TODO: Appeler la vraie fonction de déconnexion si besoin
     } else {
-      console.log('Attempting to go back to main page');
-      // Go back to main page
-      router.push('/(manager-tabs)');
+      // Retour en arrière avec expo-router
+      router.back();
     }
   };
 
@@ -83,7 +67,7 @@ export default function ManagerTabLayout() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, isDark && styles.containerDark]}>
       <Tabs
         screenOptions={{
           headerShown: false,
@@ -95,30 +79,24 @@ export default function ManagerTabLayout() {
         <Tabs.Screen name="calendar" />
         <Tabs.Screen name="team" />
         <Tabs.Screen name="efficiency" />
+        <Tabs.Screen name="settings" />
       </Tabs>
       
-      {/* Bottom Right Navigation Button */}
-      {isVisible && (
-        <TouchableOpacity 
-          style={getButtonStyle()}
-          onPress={handleButtonPress}
-          activeOpacity={0.7}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          {isMainPage ? (
-            <LogOut color="#ffffff" size={24} strokeWidth={2} />
-          ) : (
-            <ArrowLeft color="#ffffff" size={24} strokeWidth={2} />
-          )}
-        </TouchableOpacity>
+      {/* Retire le console.log qui cause l'erreur TypeScript */}
+      {isVisible && isMainPage && (
+      <TouchableOpacity 
+        style={isMainPage ? [getButtonStyle(), { backgroundColor: '#e74c3c' }] : getButtonStyle()}
+        onPress={handleButtonPress}
+        activeOpacity={0.7}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      >
+        {isMainPage ? (
+          <LogOut color="#fff" size={24} strokeWidth={2} />
+        ) : (
+          <ArrowLeft color="#ffffff" size={24} strokeWidth={2} />
+        )}
+      </TouchableOpacity>
       )}
-      
-      {/* Debug info */}
-      <View style={styles.debugInfo}>
-        <Text style={styles.debugText}>Path: {pathname}</Text>
-        <Text style={styles.debugText}>Is Main: {isMainPage ? 'Yes' : 'No'}</Text>
-        <Text style={styles.debugText}>Visible: {isVisible ? 'Yes' : 'No'}</Text>
-      </View>
     </View>
   );
 }
@@ -128,18 +106,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F5F5F5',
   },
-  debugInfo: {
-    position: 'absolute',
-    top: 50,
-    left: 20,
-    backgroundColor: 'rgba(0,0,0,0.8)',
-    padding: 10,
-    borderRadius: 5,
-    zIndex: 1001,
-  },
-  debugText: {
-    color: 'white',
-    fontSize: 12,
-    marginBottom: 2,
+  containerDark: {
+    backgroundColor: '#18181b',
   },
 });

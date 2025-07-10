@@ -15,11 +15,14 @@ import {
   LogOut,
   ChevronRight 
 } from 'lucide-react-native';
+import { useTheme } from '../../contexts/ThemeContext';
 
 export default function ProfileTab() {
+  const { isDark } = useTheme();
+  
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+    <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
+      <ScrollView style={styles.scrollView} contentContainerStyle={{flexGrow:1}} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.avatarContainer}>
@@ -27,56 +30,56 @@ export default function ProfileTab() {
               <User color="#ffffff" size={32} strokeWidth={2} />
             </View>
           </View>
-          <Text style={styles.name}>Jean Dupont</Text>
-          <Text style={styles.role}>Directeur Général</Text>
+          <Text style={[styles.name, isDark && styles.nameDark]}>Jean Dupont</Text>
+          <Text style={[styles.role, isDark && styles.roleDark]}>Directeur Général</Text>
         </View>
 
         {/* Profile Options */}
         <View style={styles.section}>
-          <TouchableOpacity style={styles.optionCard}>
+          <TouchableOpacity style={[styles.optionCard, isDark && styles.optionCardDark]}>
             <View style={styles.optionContent}>
-              <View style={styles.optionIcon}>
+              <View style={[styles.optionIcon, isDark && styles.optionIconDark]}>
                 <User color="#3b82f6" size={20} strokeWidth={2} />
               </View>
-              <Text style={styles.optionTitle}>Informations personnelles</Text>
+              <Text style={[styles.optionTitle, isDark && styles.optionTitleDark]}>Informations personnelles</Text>
             </View>
-            <ChevronRight color="#6b7280" size={20} strokeWidth={2} />
+            <ChevronRight color={isDark ? "#a1a1aa" : "#6b7280"} size={20} strokeWidth={2} />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.optionCard}>
+          <TouchableOpacity style={[styles.optionCard, isDark && styles.optionCardDark]}>
             <View style={styles.optionContent}>
-              <View style={styles.optionIcon}>
+              <View style={[styles.optionIcon, isDark && styles.optionIconDark]}>
                 <Settings color="#10b981" size={20} strokeWidth={2} />
               </View>
-              <Text style={styles.optionTitle}>Paramètres</Text>
+              <Text style={[styles.optionTitle, isDark && styles.optionTitleDark]}>Paramètres</Text>
             </View>
-            <ChevronRight color="#6b7280" size={20} strokeWidth={2} />
+            <ChevronRight color={isDark ? "#a1a1aa" : "#6b7280"} size={20} strokeWidth={2} />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.optionCard}>
+          <TouchableOpacity style={[styles.optionCard, isDark && styles.optionCardDark]}>
             <View style={styles.optionContent}>
-              <View style={styles.optionIcon}>
+              <View style={[styles.optionIcon, isDark && styles.optionIconDark]}>
                 <Bell color="#f59e0b" size={20} strokeWidth={2} />
               </View>
-              <Text style={styles.optionTitle}>Notifications</Text>
+              <Text style={[styles.optionTitle, isDark && styles.optionTitleDark]}>Notifications</Text>
             </View>
-            <ChevronRight color="#6b7280" size={20} strokeWidth={2} />
+            <ChevronRight color={isDark ? "#a1a1aa" : "#6b7280"} size={20} strokeWidth={2} />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.optionCard}>
+          <TouchableOpacity style={[styles.optionCard, isDark && styles.optionCardDark]}>
             <View style={styles.optionContent}>
-              <View style={styles.optionIcon}>
+              <View style={[styles.optionIcon, isDark && styles.optionIconDark]}>
                 <Shield color="#8b5cf6" size={20} strokeWidth={2} />
               </View>
-              <Text style={styles.optionTitle}>Sécurité</Text>
+              <Text style={[styles.optionTitle, isDark && styles.optionTitleDark]}>Sécurité</Text>
             </View>
-            <ChevronRight color="#6b7280" size={20} strokeWidth={2} />
+            <ChevronRight color={isDark ? "#a1a1aa" : "#6b7280"} size={20} strokeWidth={2} />
           </TouchableOpacity>
         </View>
 
         {/* Logout Button */}
         <View style={styles.logoutSection}>
-          <TouchableOpacity style={styles.logoutButton}>
+          <TouchableOpacity style={[styles.logoutButton, isDark && styles.logoutButtonDark]}>
             <LogOut color="#ef4444" size={20} strokeWidth={2} />
             <Text style={styles.logoutText}>Se déconnecter</Text>
           </TouchableOpacity>
@@ -90,6 +93,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F5F5F5',
+  },
+  containerDark: {
+    backgroundColor: '#18181b',
   },
   scrollView: {
     flex: 1,
@@ -125,10 +131,16 @@ const styles = StyleSheet.create({
     color: '#1a1a1a',
     marginBottom: 4,
   },
+  nameDark: {
+    color: '#ffffff',
+  },
   role: {
     fontSize: 16,
     color: '#6b7280',
     fontWeight: '500',
+  },
+  roleDark: {
+    color: '#a1a1aa',
   },
   section: {
     paddingHorizontal: 24,
@@ -151,6 +163,9 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 2,
   },
+  optionCardDark: {
+    backgroundColor: '#27272a',
+  },
   optionContent: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -165,10 +180,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 16,
   },
+  optionIconDark: {
+    backgroundColor: '#3f3f46',
+  },
   optionTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#1a1a1a',
+  },
+  optionTitleDark: {
+    color: '#ffffff',
   },
   logoutSection: {
     paddingHorizontal: 24,
@@ -191,6 +212,10 @@ const styles = StyleSheet.create({
     elevation: 3,
     borderWidth: 1,
     borderColor: '#fee2e2',
+  },
+  logoutButtonDark: {
+    backgroundColor: '#27272a',
+    borderColor: '#7f1d1d',
   },
   logoutText: {
     fontSize: 16,

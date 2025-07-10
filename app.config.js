@@ -1,39 +1,9 @@
-module.exports = {
-  expo: {
-    name: "bolt-expo-nativewind",
-    slug: "bolt-expo-nativewind",
-    version: "1.0.0",
-    orientation: "portrait",
-    icon: "./assets/images/icon.png",
-    scheme: "myapp",
-    userInterfaceStyle: "automatic",
-    newArchEnabled: true,
-    ios: {
-      supportsTablet: true,
-    },
-    web: {
-      bundler: "metro",
-      output: "single",
-      favicon: "./assets/images/favicon.png",
-    },
-    plugins: [
-      "expo-router",
-      "expo-font",
-      "expo-web-browser",
-      [
-        "expo-notifications",
-        {
-          icon: "./assets/images/notification-icon.png",
-          color: "#3b82f6",
-          sounds: ["./assets/sounds/notification.wav"],
-        },
-      ],
-    ],
-    experiments: {
-      typedRoutes: true,
-    },
-    android: {
-      package: "com.anonymous.boltexponativewind",
-    },
+console.log("TEST_VAR:", process.env.TEST_VAR);
+
+module.exports = ({ config }) => ({
+  ...config,
+  extra: {
+    supabaseUrl: "https://vqwgnvrhcaosnjczuwth.supabase.co",
+    supabaseAnonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZxd2dudnJoY2Fvc25qY3p1d3RoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5ODc0MjQsImV4cCI6MjA2NzU2MzQyNH0.3R5XkNZGMLmLUI1A5iExLnhsIyiwIyz0Azu7eInQHq4",
   },
-}; 
+}); 
