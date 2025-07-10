@@ -84,6 +84,7 @@ CREATE INDEX IF NOT EXISTS idx_team_members_store_id ON team_members(store_id);
 CREATE TABLE IF NOT EXISTS scheduled_tasks (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     title VARCHAR(200) NOT NULL,
+    description TEXT,
     start_time TIME NOT NULL,
     end_time TIME NOT NULL,
     duration VARCHAR(20) NOT NULL,
@@ -95,6 +96,7 @@ CREATE TABLE IF NOT EXISTS scheduled_tasks (
     palette_condition BOOLEAN DEFAULT false,
     is_pinned BOOLEAN DEFAULT false,
     is_completed BOOLEAN DEFAULT false,
+    team_members JSONB DEFAULT '[]'::jsonb,
     manager_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     store_id BIGINT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -141,6 +143,37 @@ CREATE TABLE IF NOT EXISTS user_preferences (
 
 -- Index pour optimiser les requêtes
 CREATE INDEX IF NOT EXISTS idx_user_preferences_user_id ON user_preferences(user_id);
+
+-- =====================================================
+-- TABLE: scheduled_events (Événements récurrents)
+-- =====================================================
+CREATE TABLE IF NOT EXISTS scheduled_events (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    title VARCHAR(200) NOT NULL,
+    start_time TIME NOT NULL,
+    duration_minutes INTEGER NOT NULL CHECK (duration_minutes > 0),
+    packages INTEGER NOT NULL CHECK (packages >= 0),
+    team_size INTEGER NOT NULL CHECK (team_size >= 0),
+    manager_section VARCHAR(50) NOT NULL,
+    manager_initials VARCHAR(10) NOT NULL,
+    palette_condition BOOLEAN DEFAULT false,
+    recurrence_type VARCHAR(20) NOT NULL CHECK (recurrence_type IN ('none', 'daily', 'weekly', 'weekdays', 'custom')),
+    recurrence_days JSONB DEFAULT NULL, -- Array of days [0,1,2,3,4,5,6] for Sunday-Saturday
+    start_date DATE NOT NULL,
+    end_date DATE DEFAULT NULL, -- NULL means no end date
+    is_active BOOLEAN DEFAULT true,
+    manager_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    store_id BIGINT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Index pour optimiser les requêtes sur les événements récurrents
+CREATE INDEX IF NOT EXISTS idx_scheduled_events_manager_id ON scheduled_events(manager_id);
+CREATE INDEX IF NOT EXISTS idx_scheduled_events_active ON scheduled_events(is_active);
+CREATE INDEX IF NOT EXISTS idx_scheduled_events_recurrence ON scheduled_events(recurrence_type);
+CREATE INDEX IF NOT EXISTS idx_scheduled_events_dates ON scheduled_events(start_date, end_date);
+CREATE INDEX IF NOT EXISTS idx_scheduled_events_store_id ON scheduled_events(store_id);
 
 -- =====================================================
 -- FONCTIONS ET TRIGGERS

@@ -184,7 +184,10 @@ export const useSupabaseTasks = (filters: TaskFilters = {}) => {
   };
 
   const getTasksByDate = (date: string) => {
-    return tasks.filter(task => task.date === date);
+    // Filtrer les tâches depuis l'état local pour usage synchrone
+    const filtered = tasks.filter(task => task.date === date);
+    console.log('🔍 getTasksByDate (local) - Tâches pour', date, ':', filtered.length);
+    return filtered;
   };
 
   const completeTask = async (id: string) => {
@@ -276,7 +279,48 @@ export const useSupabaseTasks = (filters: TaskFilters = {}) => {
     const task = tasks.find(t => t.id === id);
     if (!task) return { success: false, error: 'Tâche non trouvée' };
     
-    return updateTask(id, { is_completed: !task.is_completed });
+    const newCompletionStatus = !task.is_completed;
+    
+    // Mettre à jour la tâche
+    const result = await updateTask(id, { is_completed: newCompletionStatus });
+    
+    // ✅ NOUVEAUTÉ : Mettre à jour le statut des employés assignés
+    if (result.success && task.team_members && Array.isArray(task.team_members)) {
+      try {
+        // Si la tâche devient terminée, libérer les employés (status = 'online')
+        // Si la tâche redevient non-terminée, marquer les employés comme occupés (status = 'busy')
+        const newStatus = newCompletionStatus ? 'online' : 'busy';
+        
+        console.log(`🔄 Mise à jour du statut des employés assignés à la tâche ${task.title}:`, {
+          taskId: id,
+          teamMembers: task.team_members,
+          newTaskStatus: newCompletionStatus ? 'terminée' : 'en cours',
+          newEmployeeStatus: newStatus
+        });
+        
+        for (const employeeId of task.team_members) {
+          // Utiliser l'API server.js pour mettre à jour le statut
+          const response = await fetch('http://localhost:3001/api/employees/' + employeeId, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ status: newStatus }),
+          });
+          
+          if (!response.ok) {
+            console.warn(`⚠️ Impossible de mettre à jour le statut de l'employé ${employeeId}`);
+          } else {
+            console.log(`✅ Statut de l'employé ${employeeId} mis à jour: ${newStatus}`);
+          }
+        }
+      } catch (error) {
+        console.error('❌ Erreur lors de la mise à jour du statut des employés:', error);
+        // Ne pas faire échouer la completion de la tâche si la mise à jour des employés échoue
+      }
+    }
+    
+    return result;
   };
 
   return {

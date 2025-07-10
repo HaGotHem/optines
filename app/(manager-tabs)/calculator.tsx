@@ -27,6 +27,8 @@ import { useSupabaseAuth } from '../../hooks/useSupabaseAuth';
 import { useSupabaseTeam } from '../../hooks/useSupabaseTeam';
 import { useSupabaseTasks } from '../../hooks/useSupabaseTasks';
 import { useUserProfile } from '../../hooks/useUserProfile';
+import { useSupabaseEvents, RecurrenceType } from '../../hooks/useSupabaseEvents';
+import { useTaskRefresh } from '../../contexts/TaskRefreshContext';
 
 interface TeamMember {
   id: number;
@@ -103,6 +105,13 @@ export default function JobCalculatorTab() {
 
   const [showDevTools, setShowDevTools] = useState(false);
 
+  // États pour la récurrence
+  const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('none');
+  const [recurrenceDays, setRecurrenceDays] = useState<number[]>([]);
+  const [recurrenceEndDate, setRecurrenceEndDate] = useState<Date | null>(null);
+  const [showRecurrenceOptions, setShowRecurrenceOptions] = useState(false);
+  const [showRecurrenceEndDatePicker, setShowRecurrenceEndDatePicker] = useState(false);
+
   // TOUS LES HOOKS DOIVENT ÊTRE APPELÉS ICI, AVANT TOUS LES EARLY RETURNS
   const { isDark } = useTheme();
   const { user, isLoading } = useSupabaseAuth();
@@ -132,10 +141,26 @@ export default function JobCalculatorTab() {
     tasks: supabaseTasks,
     isLoading: tasksLoading,
     createTask,
+    deleteTask,
+    toggleTaskComplete,
     getTasksByDate
   } = useSupabaseTasks({
     managerId: user?.app_metadata?.user_id?.toString()
   });
+
+  // Hook pour les événements récurrents
+  const {
+    events,
+    isLoading: eventsLoading,
+    createEvent,
+    generateTasksForDate,
+    generateTasksForRange,
+    getRecurrenceDescription
+  } = useSupabaseEvents({
+    managerId: managerId
+  });
+  
+  const { triggerRefresh } = useTaskRefresh();
 
   // FONCTIONS UTILITAIRES - DOIVENT ÊTRE DÉFINIES AVANT LES USEEFFECT
   const loadTotalEmployees = async () => {
@@ -250,29 +275,38 @@ export default function JobCalculatorTab() {
       // Utiliser les tâches de Supabase au lieu d'AsyncStorage
       const tasksOnSameDate = await getTasksByDate(selectedDateString);
       
-      // Calculer le nombre d'employés déjà assignés à des tâches
+      // ✅ CORRECTION : Calculer le nombre d'employés déjà assignés à des tâches NON TERMINÉES uniquement
       let assignedEmployees = 0;
       
       const newTaskStart = selectedStartTime;
       const newTaskEnd = calculateEndTime(selectedStartTime, timeCalculation.totalTime);
       
       tasksOnSameDate.forEach((task: any) => {
+        // ✅ CORRECTION : Ignorer les tâches terminées
+        if (task.is_completed) {
+          console.log('⏭️ Skipping completed task:', task.title);
+          return; // Ne pas compter les employés des tâches terminées
+        }
+        
         // Pour les nouvelles tâches avec team_members, compter les employés explicitement assignés
         if (task.team_members && task.team_members.length > 0) {
           assignedEmployees += task.team_members.length;
+          console.log(`➕ Counting ${task.team_members.length} employees from active task: ${task.title}`);
     } else {
           // Pour les anciennes tâches sans team_members, ne pas les compter
-          console.log('Skipping legacy task without team_members:', task.title);
+          console.log('⏭️ Skipping legacy task without team_members:', task.title);
         }
       });
       
       // Calculer les employés disponibles
       const available = Math.max(0, totalEmployeesDynamic - assignedEmployees);
-      console.log('Available employees calculation:', {
+      console.log('📊 Available employees calculation:', {
         totalEmployeesDynamic,
         assignedEmployees,
         available,
-        tasksOnSameDate: tasksOnSameDate.length
+        tasksOnSameDate: tasksOnSameDate.length,
+        completedTasks: tasksOnSameDate.filter(t => t.is_completed).length,
+        activeTasks: tasksOnSameDate.filter(t => !t.is_completed).length
       });
       
       setAvailableEmployees(available);
@@ -326,6 +360,13 @@ export default function JobCalculatorTab() {
     setAssignedEmployeeIds([]);
     setTempSelectedHour('05');
     setTempSelectedMinute('00');
+    
+    // Reset récurrence
+    setRecurrenceType('none');
+    setRecurrenceDays([]);
+    setRecurrenceEndDate(null);
+    setShowRecurrenceOptions(false);
+    setShowRecurrenceEndDatePicker(false);
   };
         
   // TOUS LES USEEFFECT APRÈS LES FONCTIONS
@@ -756,9 +797,18 @@ export default function JobCalculatorTab() {
   const saveTask = async (task: Task) => {
     try {
       console.log('💾 SaveTask - Début de sauvegarde:', task);
+      console.log('💾 SaveTask - managerId:', managerId);
+      console.log('💾 SaveTask - createTask function:', typeof createTask);
       
-      // Sauvegarder la tâche dans Supabase
-      const result = await createTask({
+      if (!managerId) {
+        throw new Error('Manager ID manquant - impossible de sauvegarder la tâche');
+      }
+
+      if (!createTask) {
+        throw new Error('Fonction createTask non disponible - hook Supabase non initialisé');
+      }
+
+      const taskData = {
         title: task.title,
         description: `${task.packages} colis`,
         start_time: task.start_time,
@@ -771,13 +821,20 @@ export default function JobCalculatorTab() {
         palette_condition: task.palette_condition,
         manager_id: managerId, // ID du manager qui créé la tâche
         team_members: task.team_members
-      });
+      };
 
-      if (!result.success) {
-        throw new Error(result.error || 'Erreur lors de la sauvegarde');
+      console.log('💾 SaveTask - Données à sauvegarder:', taskData);
+      
+      // Sauvegarder la tâche dans Supabase
+      const result = await createTask(taskData);
+
+      console.log('💾 SaveTask - Résultat de createTask:', result);
+
+      if (!result || !result.success) {
+        throw new Error(result?.error || 'Erreur lors de la sauvegarde - résultat invalide');
       }
 
-      console.log('✅ Tâche sauvegardée dans Supabase');
+      console.log('✅ Tâche sauvegardée dans Supabase avec succès:', result.task);
 
       // Programmer un rappel de notification pour cette tâche
       await scheduleTaskReminder(task);
@@ -794,9 +851,21 @@ export default function JobCalculatorTab() {
         calculerStatsColis();
       }, 200);
       
+      // Forcer le rechargement des tâches
+      setTimeout(() => {
+        console.log('🔄 Rechargement forcé des tâches');
+        loadTasksForSelectedDate();
+      }, 500);
+      
     } catch (error) {
-      console.error('Error saving task:', error);
-      Alert.alert('Erreur', 'Impossible de sauvegarder la tâche');
+      console.error('❌ Error saving task:', error);
+      console.error('❌ Error details:', {
+        message: error instanceof Error ? error.message : 'Erreur inconnue',
+        stack: error instanceof Error ? error.stack : 'Pas de stack trace',
+        managerId,
+        createTaskAvailable: !!createTask
+      });
+      Alert.alert('Erreur', `Impossible de sauvegarder la tâche: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
     }
   };
 
@@ -895,6 +964,21 @@ export default function JobCalculatorTab() {
     }
   }, [tasksLoading]);
 
+  // ✅ AJOUT : Rafraîchir les employés disponibles quand les tâches changent
+  useEffect(() => {
+    console.log('🔄 Tâches chargées, recalcul des employés disponibles...');
+    calculateAvailableEmployees();
+  }, [tasksForSelectedDate]);
+
+  // ✅ AJOUT : Rafraîchir les employés disponibles quand le refresh global est déclenché
+  useEffect(() => {
+    if (refreshTrigger > 0) {
+      console.log('🔄 Refresh global détecté, recalcul des employés disponibles...');
+      calculateAvailableEmployees();
+      loadTasksForSelectedDate();
+    }
+  }, [refreshTrigger]);
+
   // Marquer une tâche comme traitée via Supabase
   const handleMarkTaskAsDone = async (taskId: string) => {
     try {
@@ -903,6 +987,10 @@ export default function JobCalculatorTab() {
         console.log('✅ Tâche marquée comme terminée');
         calculerStatsColis();
         loadTasksForSelectedDate();
+        // ✅ AJOUT : Rafraîchir les employés disponibles après completion
+        setTimeout(() => calculateAvailableEmployees(), 100);
+        // Déclencher un rafraîchissement global pour mettre à jour toutes les interfaces
+        triggerRefresh();
       } else {
         console.error('Erreur lors de la completion:', result.error);
       }
@@ -925,6 +1013,8 @@ export default function JobCalculatorTab() {
               console.log('✅ Tâche supprimée');
               calculerStatsColis();
               loadTasksForSelectedDate();
+              // Déclencher un rafraîchissement global pour mettre à jour toutes les interfaces
+              triggerRefresh();
             } else {
               console.error('Erreur lors de la suppression:', result.error);
             }
@@ -1018,6 +1108,107 @@ export default function JobCalculatorTab() {
   }
 
   // Vérifier si un employé est déjà assigné à une tâche (occupé ou en conflit)
+  // Fonctions pour la récurrence
+  const toggleRecurrenceDay = (day: number) => {
+    if (recurrenceDays.includes(day)) {
+      setRecurrenceDays(recurrenceDays.filter(d => d !== day));
+    } else {
+      setRecurrenceDays([...recurrenceDays, day]);
+    }
+  };
+
+  const handleRecurrenceTypeChange = (type: RecurrenceType) => {
+    setRecurrenceType(type);
+    
+    // Auto-configuration des jours selon le type
+    switch (type) {
+      case 'weekdays':
+        setRecurrenceDays([1, 2, 3, 4, 5]); // Lun-Ven
+        break;
+      case 'weekly':
+        // Prendre le jour de la semaine de la date sélectionnée
+        const dayOfWeek = selectedDate.getDay() === 0 ? 7 : selectedDate.getDay();
+        setRecurrenceDays([dayOfWeek]);
+        break;
+      case 'daily':
+        setRecurrenceDays([1, 2, 3, 4, 5, 6, 7]); // Tous les jours
+        break;
+      case 'none':
+      case 'custom':
+        setRecurrenceDays([]);
+        break;
+    }
+  };
+
+  const saveAsRecurringEvent = async () => {
+    if (!packages || teamMembers.length === 0) {
+      Alert.alert('Erreur', 'Veuillez remplir tous les champs obligatoires');
+      return;
+    }
+
+    try {
+      const eventData = {
+        title: `${currentManager.section} - ${currentManager.initials}`,
+        description: `Tâche récurrente de traitement de ${packages} colis`,
+        start_time: selectedStartTime,
+        duration_minutes: Math.floor(timeCalculation.totalTime / 60),
+        packages: parseInt(packages),
+        team_size: teamMembers.length,
+        manager_section: currentManager.section,
+        manager_initials: currentManager.initials,
+        palette_condition: paletteCondition,
+        team_members: teamMembers.map(m => m.id),
+        recurrence_type: recurrenceType,
+        recurrence_days: recurrenceDays,
+        start_date: selectedDate.toISOString().split('T')[0],
+        end_date: recurrenceEndDate ? recurrenceEndDate.toISOString().split('T')[0] : undefined,
+        manager_id: managerId,
+        store_id: 1
+      };
+
+      const result = await createEvent(eventData);
+      
+      if (result.success) {
+        Alert.alert(
+          'Événement récurrent créé !',
+          `L'événement "${eventData.title}" a été configuré avec une récurrence de type : ${getRecurrenceDescription(result.event)}.`,
+          [
+            {
+              text: 'Générer les tâches pour cette semaine',
+              onPress: async () => {
+                const today = new Date();
+                const endOfWeek = new Date(today);
+                endOfWeek.setDate(today.getDate() + (7 - today.getDay()));
+                
+                const generateResult = await generateTasksForRange(
+                  today.toISOString().split('T')[0],
+                  endOfWeek.toISOString().split('T')[0]
+                );
+                
+                if (generateResult.success) {
+                  Alert.alert('Succès', `${generateResult.count} tâche(s) générée(s) pour cette semaine !`);
+                  loadTasksForSelectedDate(); // Rafraîchir l'affichage
+                }
+              }
+            },
+            { text: 'OK', style: 'default' }
+          ]
+        );
+        resetForm();
+      } else {
+        Alert.alert('Erreur', result.error || 'Impossible de créer l\'événement récurrent');
+      }
+    } catch (error) {
+      console.error('Erreur lors de la création de l\'événement récurrent:', error);
+      Alert.alert('Erreur', 'Impossible de créer l\'événement récurrent');
+    }
+  };
+
+  const getDayName = (day: number) => {
+    const dayNames = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+    return dayNames[day - 1];
+  };
+
   const isEmployeeAssigned = async (employeeId: number) => {
     try {
       const selectedDateString = selectedDate.toISOString().split('T')[0];
@@ -1036,6 +1227,11 @@ export default function JobCalculatorTab() {
       
       // Vérifier si l'employé est dans une tâche qui se chevauche
       for (const task of tasksOnSameDate) {
+        // ✅ NOUVEAUTÉ : Ignorer les tâches terminées - les employés sont libérés
+        if (task.is_completed) {
+          continue;
+        }
+        
         const existingStart = task.start_time;
         const existingEnd = task.end_time;
         
@@ -1322,11 +1518,164 @@ export default function JobCalculatorTab() {
           </View>
         </View>
 
+        {/* Recurrence Options */}
+        <View style={[styles.section, isDark && styles.sectionDark]}>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Options de récurrence</Text>
+            <TouchableOpacity 
+              onPress={() => setShowRecurrenceOptions(!showRecurrenceOptions)}
+              style={[styles.toggleButton, isDark && styles.toggleButtonDark]}
+            >
+              <Text style={[styles.toggleButtonText, isDark && styles.textDark]}>
+                {showRecurrenceOptions ? '▲ Masquer' : '▼ Afficher'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          
+          {showRecurrenceOptions && (
+            <View>
+              {/* Type de récurrence */}
+              <View style={[styles.recurrenceCard, isDark && styles.cardDark]}>
+                <Text style={[styles.recurrenceLabel, isDark && styles.textDark]}>Type de récurrence</Text>
+                
+                <View style={styles.recurrenceTypeGrid}>
+                  {[
+                    { value: 'none', label: 'Aucune', icon: '📅' },
+                    { value: 'daily', label: 'Quotidienne', icon: '🔄' },
+                    { value: 'weekly', label: 'Hebdomadaire', icon: '📆' },
+                    { value: 'weekdays', label: 'Jours ouvrables', icon: '💼' },
+                    { value: 'custom', label: 'Personnalisée', icon: '⚙️' }
+                  ].map((type) => (
+                    <TouchableOpacity
+                      key={type.value}
+                      style={[
+                        styles.recurrenceTypeButton,
+                        recurrenceType === type.value && styles.recurrenceTypeButtonActive,
+                        isDark && styles.cardDark,
+                        recurrenceType === type.value && isDark && styles.recurrenceTypeButtonActiveDark
+                      ]}
+                      onPress={() => handleRecurrenceTypeChange(type.value as RecurrenceType)}
+                    >
+                      <Text style={[styles.recurrenceTypeIcon, isDark && styles.textDark]}>
+                        {type.icon}
+                      </Text>
+                      <Text style={[
+                        styles.recurrenceTypeLabel,
+                        recurrenceType === type.value && styles.recurrenceTypeLabelActive,
+                        isDark && styles.textDark
+                      ]}>
+                        {type.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Jours personnalisés (seulement pour custom) */}
+              {recurrenceType === 'custom' && (
+                <View style={[styles.recurrenceCard, isDark && styles.cardDark]}>
+                  <Text style={[styles.recurrenceLabel, isDark && styles.textDark]}>Jours de la semaine</Text>
+                  
+                  <View style={styles.daysGrid}>
+                    {[1, 2, 3, 4, 5, 6, 7].map((day) => (
+                      <TouchableOpacity
+                        key={day}
+                        style={[
+                          styles.dayButton,
+                          recurrenceDays.includes(day) && styles.dayButtonActive,
+                          isDark && styles.dayButtonDark,
+                          recurrenceDays.includes(day) && isDark && styles.dayButtonActiveDark
+                        ]}
+                        onPress={() => toggleRecurrenceDay(day)}
+                      >
+                        <Text style={[
+                          styles.dayButtonText,
+                          recurrenceDays.includes(day) && styles.dayButtonTextActive,
+                          isDark && styles.textDark
+                        ]}>
+                          {getDayName(day)}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* Date de fin (optionnelle) */}
+              {recurrenceType !== 'none' && (
+                <View style={[styles.recurrenceCard, isDark && styles.cardDark]}>
+                  <View style={styles.recurrenceEndHeader}>
+                    <Text style={[styles.recurrenceLabel, isDark && styles.textDark]}>Date de fin (optionnelle)</Text>
+                    <TouchableOpacity
+                      style={[styles.endDateButton, isDark && styles.endDateButtonDark]}
+                      onPress={() => setShowRecurrenceEndDatePicker(true)}
+                    >
+                      <Calendar color={isDark ? '#60a5fa' : '#3b82f6'} size={20} strokeWidth={2} />
+                      <Text style={[styles.endDateButtonText, isDark && styles.textDark]}>
+                        {recurrenceEndDate 
+                          ? formatDate(recurrenceEndDate)
+                          : 'Aucune limite'
+                        }
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  
+                  {recurrenceEndDate && (
+                    <TouchableOpacity
+                      style={[styles.clearEndDateButton, isDark && styles.clearEndDateButtonDark]}
+                      onPress={() => setRecurrenceEndDate(null)}
+                    >
+                      <X color="#ef4444" size={16} strokeWidth={2} />
+                      <Text style={[styles.clearEndDateButtonText, isDark && styles.textDark]}>
+                        Supprimer la date de fin
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+
+              {/* Aperçu de la récurrence */}
+              {recurrenceType !== 'none' && (
+                <View style={[styles.recurrencePreview, isDark && styles.recurrencePreviewDark]}>
+                  <Text style={[styles.recurrencePreviewLabel, isDark && styles.textDark]}>
+                    Aperçu de la récurrence :
+                  </Text>
+                  <Text style={[styles.recurrencePreviewText, isDark && styles.textDark]}>
+                    {recurrenceType === 'daily' && 'Cette tâche sera répétée tous les jours'}
+                    {recurrenceType === 'weekly' && `Cette tâche sera répétée chaque ${getDayName(selectedDate.getDay() === 0 ? 7 : selectedDate.getDay())}`}
+                    {recurrenceType === 'weekdays' && 'Cette tâche sera répétée du lundi au vendredi'}
+                    {recurrenceType === 'custom' && recurrenceDays.length > 0 && 
+                      `Cette tâche sera répétée : ${recurrenceDays.map(d => getDayName(d)).join(', ')}`}
+                    {recurrenceType === 'custom' && recurrenceDays.length === 0 && 
+                      'Sélectionnez au moins un jour de la semaine'}
+                  </Text>
+                  {recurrenceEndDate && (
+                    <Text style={[styles.recurrencePreviewEnd, isDark && styles.textDark]}>
+                      Jusqu'au {formatDate(recurrenceEndDate)}
+                    </Text>
+                  )}
+                </View>
+              )}
+            </View>
+          )}
+        </View>
+
         {/* Action Buttons */}
         <View style={[styles.actionSection, isDark && styles.sectionDark]}>
           <TouchableOpacity style={[styles.saveButton, isDark && styles.saveButtonDark]} onPress={startTask}>
             <Text style={[styles.saveButtonText, isDark && styles.textDark]}>Démarrer la tâche</Text>
           </TouchableOpacity>
+          
+          {recurrenceType !== 'none' && (
+            <TouchableOpacity 
+              style={[styles.recurrenceButton, isDark && styles.recurrenceButtonDark]} 
+              onPress={saveAsRecurringEvent}
+            >
+              <Text style={[styles.recurrenceButtonText, isDark && styles.textDark]}>
+                🔄 Créer événement récurrent
+              </Text>
+            </TouchableOpacity>
+          )}
           
           <TouchableOpacity style={[styles.secondaryButton, isDark && styles.secondaryButtonDark]}>
             <Text style={[styles.secondaryButtonText, isDark && styles.secondaryButtonTextDark]}>Sauvegarder le calcul</Text>
@@ -1404,6 +1753,19 @@ export default function JobCalculatorTab() {
         selectedDate={selectedDate}
         minDate={new Date()}
         maxDate={new Date(Date.now() + 84 * 24 * 60 * 60 * 1000)} // 12 weeks from now
+      />
+
+      {/* Recurrence End Date Picker */}
+      <DatePickerCalendar
+        visible={showRecurrenceEndDatePicker}
+        onClose={() => setShowRecurrenceEndDatePicker(false)}
+        onDateSelect={(date) => {
+          setRecurrenceEndDate(date);
+          setShowRecurrenceEndDatePicker(false);
+        }}
+        selectedDate={recurrenceEndDate || new Date()}
+        minDate={selectedDate} // La date de fin ne peut pas être avant la date de début
+        maxDate={new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)} // 1 an maximum
       />
 
       {/* Task Confirmation Modal */}
@@ -3046,5 +3408,195 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: '#065f46',
+  },
+  
+  // Styles pour la récurrence
+  toggleButton: {
+    backgroundColor: '#f3f4f6',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  toggleButtonDark: {
+    backgroundColor: '#374151',
+  },
+  toggleButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6b7280',
+  },
+  recurrenceCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  recurrenceLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1a1a1a',
+    marginBottom: 12,
+  },
+  recurrenceTypeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  recurrenceTypeButton: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    padding: 12,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+    minWidth: '30%',
+    flexGrow: 1,
+  },
+  recurrenceTypeButtonActive: {
+    backgroundColor: '#dbeafe',
+    borderColor: '#3b82f6',
+  },
+  recurrenceTypeButtonActiveDark: {
+    backgroundColor: '#1e3a8a',
+    borderColor: '#60a5fa',
+  },
+  recurrenceTypeIcon: {
+    fontSize: 20,
+    marginBottom: 4,
+  },
+  recurrenceTypeLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#6b7280',
+    textAlign: 'center',
+  },
+  recurrenceTypeLabelActive: {
+    color: '#3b82f6',
+    fontWeight: '600',
+  },
+  daysGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  dayButton: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 8,
+    padding: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    minWidth: 45,
+  },
+  dayButtonDark: {
+    backgroundColor: '#374151',
+    borderColor: '#4b5563',
+  },
+  dayButtonActive: {
+    backgroundColor: '#3b82f6',
+    borderColor: '#3b82f6',
+  },
+  dayButtonActiveDark: {
+    backgroundColor: '#60a5fa',
+    borderColor: '#60a5fa',
+  },
+  dayButtonText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#6b7280',
+  },
+  dayButtonTextActive: {
+    color: '#ffffff',
+    fontWeight: '600',
+  },
+  recurrenceEndHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  endDateButton: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 8,
+    padding: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  endDateButtonDark: {
+    backgroundColor: '#374151',
+    borderColor: '#4b5563',
+  },
+  endDateButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6b7280',
+  },
+  clearEndDateButton: {
+    backgroundColor: '#fef2f2',
+    borderRadius: 8,
+    padding: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#fecaca',
+  },
+  clearEndDateButtonDark: {
+    backgroundColor: '#450a0a',
+    borderColor: '#7f1d1d',
+  },
+  clearEndDateButtonText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#ef4444',
+  },
+  recurrencePreview: {
+    backgroundColor: '#f0f9ff',
+    borderRadius: 8,
+    padding: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#3b82f6',
+    marginTop: 8,
+  },
+  recurrencePreviewDark: {
+    backgroundColor: '#1e3a8a',
+    borderLeftColor: '#60a5fa',
+  },
+  recurrencePreviewLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1e40af',
+    marginBottom: 4,
+  },
+  recurrencePreviewText: {
+    fontSize: 14,
+    color: '#3730a3',
+    fontWeight: '500',
+  },
+  recurrencePreviewEnd: {
+    fontSize: 12,
+    color: '#6366f1',
+    fontWeight: '500',
+    marginTop: 4,
+  },
+  recurrenceButton: {
+    backgroundColor: '#10b981',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  recurrenceButtonDark: {
+    backgroundColor: '#059669',
+  },
+  recurrenceButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff',
   },
 });

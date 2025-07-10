@@ -21,6 +21,7 @@ import DatePickerCalendar from '../../components/DatePickerCalendar';
 import { useSupabaseTasks } from '../../hooks/useSupabaseTasks';
 import { useSupabaseTeam } from '../../hooks/useSupabaseTeam';
 import { useSupabaseAuth } from '../../hooks/useSupabaseAuth';
+import { useTaskRefresh } from '../../contexts/TaskRefreshContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ScheduledTask } from '../../types/database';
@@ -145,6 +146,8 @@ export default function CalendarTab() {
   } = useSupabaseTasks({ 
     managerId: user?.app_metadata?.user_id?.toString() 
   });
+  
+  const { triggerRefresh } = useTaskRefresh();
 
   const { 
     members: allEmployees,
@@ -233,34 +236,35 @@ export default function CalendarTab() {
   }, [editTeamMembers, editDate, editStartTime, editPackages, editPaletteCondition, editDelay, showEmployeeSelector]);
 
   const deleteTask = async (taskId: string) => {
-    // Confirmation visuelle immédiate
-    const taskToDelete = scheduledTasks.find(task => task.id === taskId);
-    if (!taskToDelete) {
-      console.log('Task not found:', taskId);
-      return;
-    }
-
-    try {
-      // Suppression immédiate de l'état local
-      const updatedTasks = scheduledTasks.filter(task => task.id !== taskId);
-      console.log('Task deleted successfully:', taskId, taskToDelete.title);
-      
-      // Sauvegarde dans AsyncStorage
-      await AsyncStorage.setItem('scheduledTasks', JSON.stringify(updatedTasks));
-      
-      // Feedback visuel
-      Alert.alert('Succès', `Tâche "${taskToDelete.title}" supprimée`);
-    } catch (error) {
-      console.error('Error deleting task:', error);
-      
-              // Restaurer l'état en cas d'erreur
-        const tasksString = await AsyncStorage.getItem('scheduledTasks');
-        if (tasksString) {
-          console.log('Error restoring tasks');
+    // Confirmation visuelle
+    Alert.alert(
+      'Supprimer la tâche',
+      'Êtes-vous sûr de vouloir supprimer cette tâche ?',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        { 
+          text: 'Supprimer', 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const result = await deleteTaskFromDB(taskId);
+              if (result.success) {
+                console.log('✅ Tâche supprimée depuis Supabase');
+                Alert.alert('Succès', 'Tâche supprimée avec succès');
+                // Déclencher un rafraîchissement global pour mettre à jour toutes les interfaces
+                // triggerRefresh(); // Sera ajouté après l'ajout du hook
+              } else {
+                console.error('❌ Erreur lors de la suppression:', result.error);
+                Alert.alert('Erreur', result.error || 'Impossible de supprimer la tâche');
+              }
+            } catch (error) {
+              console.error('❌ Erreur lors de la suppression de la tâche:', error);
+              Alert.alert('Erreur', 'Impossible de supprimer la tâche');
+            }
+          }
         }
-      
-      Alert.alert('Erreur', 'Impossible de supprimer la tâche');
-    }
+      ]
+    );
   };
 
   const editTask = (task: ScheduledTask) => {
@@ -1007,6 +1011,11 @@ export default function CalendarTab() {
       for (const task of tasksOnSameDate) {
         // Ignorer la tâche en cours d'édition
         if (editingTask && task.id === editingTask.id) {
+          continue;
+        }
+        
+        // ✅ NOUVEAUTÉ : Ignorer les tâches terminées - les employés sont libérés
+        if (task.is_completed) {
           continue;
         }
         
