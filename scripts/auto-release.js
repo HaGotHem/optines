@@ -175,13 +175,10 @@ function commitAndPush(version) {
     const commitMessage = `🚀 Release v${version} - Mise à jour automatique`;
     execSync(`git commit -m "${commitMessage}"`, { stdio: 'inherit' });
     
-    // Obtenir la branche actuelle
-    const currentBranch = execSync('git branch --show-current', { encoding: 'utf8' }).trim();
+    // Push sur la branche main (branche par défaut)
+    execSync('git push origin main', { stdio: 'inherit' });
     
-    // Push sur la branche actuelle
-    execSync(`git push origin ${currentBranch}`, { stdio: 'inherit' });
-    
-    log('✅ Commit et push effectués', 'green');
+    log('✅ Commit et push effectués sur main', 'green');
     return true;
   } catch (error) {
     log('❌ Erreur lors du commit/push', 'red');
