@@ -175,30 +175,8 @@ function commitAndPush(version) {
     const commitMessage = `🚀 Release v${version} - Mise à jour automatique`;
     execSync(`git commit -m "${commitMessage}"`, { stdio: 'inherit' });
     
-    // Vérifier si la branche main existe localement
-    try {
-      execSync('git show-ref --verify --quiet refs/heads/main', { stdio: 'ignore' });
-      // La branche main existe, basculer dessus
-      execSync('git checkout main', { stdio: 'inherit' });
-      execSync('git pull origin main', { stdio: 'inherit' });
-      execSync('git merge master', { stdio: 'inherit' });
-    } catch (error) {
-      // La branche main n'existe pas, la créer depuis master
-      execSync('git checkout -b main', { stdio: 'inherit' });
-      // Récupérer les changements de la branche main distante
-      try {
-        execSync('git pull origin main', { stdio: 'inherit' });
-      } catch (pullError) {
-        // Si pas de branche main distante, continuer
-        log('ℹ️  Branche main distante vide, continuation...', 'blue');
-      }
-    }
-    
-    // Push sur la branche main (branche par défaut)
-    execSync('git push origin main', { stdio: 'inherit' });
-    
-    // Revenir sur master
-    execSync('git checkout master', { stdio: 'inherit' });
+    // Push directement sur la branche main distante depuis master
+    execSync('git push origin master:main', { stdio: 'inherit' });
     
     log('✅ Commit et push effectués sur main', 'green');
     return true;
