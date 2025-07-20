@@ -175,8 +175,13 @@ function commitAndPush(version) {
     const commitMessage = `🚀 Release v${version} - Mise à jour automatique`;
     execSync(`git commit -m "${commitMessage}"`, { stdio: 'inherit' });
     
-    // Push directement sur la branche main distante depuis master
-    execSync('git push origin master:main', { stdio: 'inherit' });
+    // Push directement sur la branche main distante depuis master (avec force si nécessaire)
+    try {
+      execSync('git push origin master:main', { stdio: 'inherit' });
+    } catch (error) {
+      log('⚠️  Push normal échoué, tentative avec force...', 'yellow');
+      execSync('git push origin master:main --force', { stdio: 'inherit' });
+    }
     
     log('✅ Commit et push effectués sur main', 'green');
     return true;
