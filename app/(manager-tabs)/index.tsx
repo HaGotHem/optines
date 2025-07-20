@@ -18,6 +18,7 @@ import { useSupabaseAuth } from '../../hooks/useSupabaseAuth';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useNotifications } from '../../hooks/useNotifications';
 import { useTaskRefresh } from '../../contexts/TaskRefreshContext';
+import { notificationService } from '../../services/NotificationService';
 
 const { width } = Dimensions.get('window');
 
@@ -78,6 +79,8 @@ export default function ManagerHomeTab() {
       const packagesProgress = getPackagesProgress(today);
       console.log('📦 Progression des colis calculée:', packagesProgress);
       
+      // Filtrer les tâches : exclure celles assignées par les directeurs des statistiques
+      // Pour l'instant, on inclut toutes les tâches car le champ n'existe pas encore
       const todayTasks = tasks.filter(t => t.date === today);
       const completedTasks = todayTasks.filter(t => t.is_completed);
       const pendingTasks = todayTasks.filter(t => !t.is_completed);
@@ -257,8 +260,24 @@ export default function ManagerHomeTab() {
   const markTaskAsCompleted = async (taskId: string) => {
     try {
       console.log('🔄 Marquage de la tâche comme terminée:', taskId);
+      
+      // Trouver la tâche pour vérifier si elle a été assignée par un directeur
+      const task = tasks.find(t => t.id === taskId);
+      // const isAssignedByDirector = task?.assigned_by_director; // Champ à ajouter plus tard
+      // const directorId = task?.director_id; // Champ à ajouter plus tard
+      
       const result = await completeTask(taskId);
       if (result.success) {
+        // Si la tâche a été assignée par un directeur, envoyer une notification
+        // if (isAssignedByDirector && directorId) {
+        //   try {
+        //     await notificationService.notifyDirectorTaskCompleted(task, user?.full_name || 'Manager');
+        //     console.log('✅ Notification envoyée au directeur');
+        //   } catch (notificationError) {
+        //     console.error('❌ Erreur notification directeur:', notificationError);
+        //   }
+        // }
+        
         Alert.alert('Succès', 'Tâche marquée comme terminée');
         
         console.log('✅ Tâche terminée avec succès, recalcul des stats...');
@@ -383,6 +402,9 @@ export default function ManagerHomeTab() {
                   {task.recurring_event_id && (
                     <Text style={{ color: '#8b5cf6', fontSize: 12, marginLeft: 8 }}>  • Récurrent</Text>
                   )}
+                  {/* {task.assigned_by_director && (
+                    <Text style={{ color: '#f59e0b', fontSize: 12, marginLeft: 8 }}>  • Assignée par directeur</Text>
+                  )} */}
                 </Text>
                 <View style={styles.taskStatus}>
                     {task.is_completed ? <CheckCircle color="#10b981" size={20} strokeWidth={2} /> : <Clock color="#6b7280" size={20} strokeWidth={2} />}

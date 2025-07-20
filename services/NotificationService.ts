@@ -108,6 +108,20 @@ export class NotificationService {
     );
   }
 
+  // Notifier un directeur qu'une tâche assignée est terminée
+  async notifyDirectorTaskCompleted(task: any, managerName: string) {
+    await this.sendImmediateNotification(
+      '✅ Tâche assignée terminée',
+      `La tâche "${task.title}" assignée au manager ${managerName} a été terminée avec succès`,
+      { 
+        type: 'director_task_completed', 
+        taskId: task.id,
+        managerName,
+        taskTitle: task.title
+      }
+    );
+  }
+
   // Analyser la charge de travail de l'équipe pour une date donnée
   async analyzeTeamWorkload(date: string): Promise<{
     totalPackages: number;

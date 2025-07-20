@@ -10,45 +10,58 @@ async function testTaskInsert() {
   try {
     console.log('🔍 Test d\'insertion de tâche...');
     
-    // 1. Vérifier la structure de la table
-    console.log('📋 Vérification de la structure de la table...');
-    const { data: tableInfo, error: tableError } = await supabase
-      .from('information_schema.columns')
-      .select('column_name, data_type, is_nullable, column_default')
-      .eq('table_name', 'scheduled_tasks')
-      .eq('table_schema', 'public');
+    // 1. Vérifier les managers disponibles
+    console.log('👥 Vérification des managers...');
+    const { data: managers, error: managersError } = await supabase
+      .from('users')
+      .select('id, full_name, section')
+      .eq('role', 'manager')
+      .eq('is_active', true);
     
-    if (tableError) {
-      console.error('❌ Erreur lors de la vérification de la structure:', tableError);
-    } else {
-      console.log('✅ Structure de la table:');
-      tableInfo.forEach(col => {
-        console.log(`  - ${col.column_name}: ${col.data_type} (nullable: ${col.is_nullable})`);
-      });
+    if (managersError) {
+      console.error('❌ Erreur lors de la récupération des managers:', managersError);
+      return;
     }
     
-    // 2. Tester avec une tâche minimale
-    console.log('\n🧪 Test avec une tâche minimale...');
-    const minimalTask = {
-      title: 'Test Task',
+    console.log('✅ Managers trouvés:', managers);
+    
+    if (managers.length === 0) {
+      console.error('❌ Aucun manager trouvé');
+      return;
+    }
+    
+    const selectedManager = managers[0];
+    console.log('🎯 Manager sélectionné:', selectedManager);
+    
+    // 2. Tester avec une tâche similaire à celle du formulaire
+    console.log('\n🧪 Test avec une tâche du formulaire...');
+    const today = new Date().toISOString().split('T')[0];
+    console.log('📅 Date d\'aujourd\'hui:', today);
+    
+    const taskData = {
+      title: 'Test Tâche Directeur',
+      description: 'Tâche créée depuis le dashboard directeur',
       start_time: '09:00:00',
       end_time: '10:00:00',
       duration: '1h00',
-      date: '2025-01-20',
+      date: today,
       packages: 0,
-      team_size: 1,
-      manager_section: 'Test Section',
-      manager_initials: 'TT',
-      manager_id: 1,
-      store_id: 1,
-      team_members: []
+      team_size: 2,
+      manager_section: selectedManager.section || 'Test Section',
+      manager_initials: selectedManager.full_name?.substring(0, 2).toUpperCase() || 'TT',
+      palette_condition: false,
+      is_pinned: false,
+      is_completed: false,
+      team_members: [],
+      manager_id: selectedManager.id,
+      store_id: 1
     };
     
-    console.log('📤 Données envoyées:', JSON.stringify(minimalTask, null, 2));
+    console.log('📤 Données envoyées:', JSON.stringify(taskData, null, 2));
     
     const { data: insertData, error: insertError } = await supabase
       .from('scheduled_tasks')
-      .insert([minimalTask])
+      .insert([taskData])
       .select();
     
     if (insertError) {
@@ -60,11 +73,12 @@ async function testTaskInsert() {
       console.log('✅ Insertion réussie:', insertData);
     }
     
-    // 3. Vérifier les données existantes
-    console.log('\n📊 Vérification des données existantes...');
+    // 3. Vérifier les tâches existantes
+    console.log('\n📊 Vérification des tâches existantes...');
     const { data: existingTasks, error: selectError } = await supabase
       .from('scheduled_tasks')
       .select('*')
+      .order('created_at', { ascending: false })
       .limit(5);
     
     if (selectError) {
@@ -72,7 +86,7 @@ async function testTaskInsert() {
     } else {
       console.log('✅ Tâches existantes:', existingTasks?.length || 0);
       if (existingTasks && existingTasks.length > 0) {
-        console.log('Exemple de tâche:', JSON.stringify(existingTasks[0], null, 2));
+        console.log('Dernière tâche créée:', JSON.stringify(existingTasks[0], null, 2));
       }
     }
     

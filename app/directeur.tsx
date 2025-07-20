@@ -25,6 +25,7 @@ import { useSupabaseTasks } from '../hooks/useSupabaseTasks';
 import { useSupabaseUsers } from '../hooks/useSupabaseUsers';
 import { useSupabaseAlerts } from '../hooks/useSupabaseAlerts';
 import { useSupabaseWorkingHours } from '../hooks/useSupabaseWorkingHours';
+import { useTaskRefresh } from '../contexts/TaskRefreshContext';
 import { supabase } from '../lib/supabase';
 import PerformanceChart from '../components/PerformanceChart';
 import { notificationService } from '../services/NotificationService';
@@ -96,6 +97,7 @@ export default function DirecteurDashboard() {
     updateWorkingHours,
     loadWorkingHours
   } = useSupabaseWorkingHours();
+  const { triggerRefresh } = useTaskRefresh();
 
   // Charger les horaires de travail
   useEffect(() => {
@@ -331,68 +333,31 @@ export default function DirecteurDashboard() {
   // }, []);
 
   const assignTaskToManager = async () => {
-    console.log('🔍 Début de assignTaskToManager');
-    console.log('📋 Données du formulaire:', {
-      selectedManager,
-      taskTitle,
-      taskDate,
-      taskStartTime,
-      taskEndTime,
-      taskPackages,
-      taskTeamSize,
-      createTask: typeof createTask
-    });
+    console.log('🔍 Attribution de tâche - début');
 
-    console.log('🔍 Vérification des champs obligatoires...');
-    
     if (!selectedManager || !taskTitle.trim() || !taskDate || !taskStartTime || !taskEndTime) {
-      console.log('❌ Champs obligatoires manquants');
       Alert.alert('Erreur', 'Veuillez remplir tous les champs obligatoires');
       return;
     }
 
-    console.log('🔍 Vérification des valeurs numériques...');
-    
-    // Vérifier la taille de l'équipe (obligatoire)
     if (parseInt(taskTeamSize) <= 0) {
-      console.log('❌ Taille d\'équipe invalide');
       Alert.alert('Erreur', 'La taille de l\'équipe doit être supérieure à 0');
       return;
     }
 
     // Vérifier le nombre de colis (optionnel mais doit être positif si renseigné)
     if (taskPackages.trim() !== '' && parseInt(taskPackages) <= 0) {
-      console.log('❌ Nombre de colis invalide');
       Alert.alert('Erreur', 'Le nombre de colis doit être supérieur à 0 s\'il est renseigné');
       return;
     }
 
-    console.log('🔍 Vérification de createTask...');
-    
     if (!createTask) {
-      console.log('❌ createTask non disponible');
       Alert.alert('Erreur', 'Fonction createTask non disponible');
       return;
     }
 
-    console.log('🕐 Horaires de travail actuels:', workingHours);
-    console.log('🕐 Horaires de la tâche:', taskStartTime, '-', taskEndTime);
-
     try {
-      console.log('🔍 Début du try/catch...');
       setIsCreatingTask(true);
-      
-      console.log('🔍 Création de taskData...');
-      console.log('🔍 Valeurs brutes:', {
-        taskTitle: taskTitle,
-        taskDescription: taskDescription,
-        taskStartTime: taskStartTime,
-        taskEndTime: taskEndTime,
-        taskDate: taskDate,
-        taskPackages: taskPackages,
-        taskTeamSize: taskTeamSize,
-        selectedManager: selectedManager
-      });
       
       const taskData = {
         title: taskTitle.trim(),
@@ -410,23 +375,25 @@ export default function DirecteurDashboard() {
         is_completed: false,
         team_members: [], // Champ obligatoire manquant !
         manager_id: selectedManager.id, // Garder comme string/UUID
-        store_id: selectedManager.store_id || 1
+        store_id: selectedManager.store_id || 1,
+        // assigned_by_director: true, // Champ à ajouter plus tard
+        // director_id: user?.id // Champ à ajouter plus tard
       };
 
-      console.log('🔍 taskData final:', JSON.stringify(taskData, null, 2));
-
-      console.log('🔄 Appel de createTask avec:', taskData);
+      console.log('🔄 Création de tâche...');
       const result = await createTask(taskData);
-      console.log('🔄 Résultat de createTask:', result);
       
       if (result.success) {
+        console.log('✅ Tâche créée avec succès');
+        triggerRefresh();
+        
         // Envoyer une notification urgente si demandé
         if (sendUrgentNotification && taskPriority === 'urgent') {
           try {
             await notificationService.notifyUrgentTaskAssigned(result.task, selectedManager.full_name);
-            console.log('✅ Notification urgente envoyée au manager:', selectedManager.full_name);
+            console.log('✅ Notification urgente envoyée');
           } catch (notificationError) {
-            console.error('❌ Erreur lors de l\'envoi de la notification urgente:', notificationError);
+            console.error('❌ Erreur notification urgente:', notificationError);
           }
         }
 
@@ -465,10 +432,11 @@ ${packagesText}
           ]
         );
       } else {
+        console.error('❌ Échec création tâche:', result.error);
         Alert.alert('Erreur', result.error || 'Erreur lors de l\'attribution de la tâche');
       }
     } catch (error) {
-      console.error('❌ Erreur dans assignTaskToManager:', error);
+      console.error('❌ Erreur attribution tâche:', error);
       Alert.alert('Erreur', `Erreur lors de l'attribution de la tâche: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
     } finally {
       setIsCreatingTask(false);
@@ -621,7 +589,9 @@ ${packagesText}
         </View>
 
         {/* Global Stats */}
-        <View style={styles.statsContainer}>
+        <View style={styles.statsSection}>
+          <Text style={styles.statsTitle}>Statistiques globales</Text>
+          <View style={styles.statsContainer}>
           <View style={styles.statCard}>
             <Users color="#3b82f6" size={24} strokeWidth={2} />
             <Text style={styles.statValue}>{isLoading ? '...' : managersPerformance.length}</Text>
@@ -646,6 +616,7 @@ ${packagesText}
             <AlertTriangle color="#ef4444" size={24} strokeWidth={2} />
             <Text style={styles.statValue}>{isLoading ? '...' : (realAlerts ? realAlerts.length : 0)}</Text>
             <Text style={styles.statLabel}>Alertes</Text>
+          </View>
           </View>
         </View>
 
@@ -1191,10 +1162,7 @@ ${packagesText}
                   styles.primaryButton,
                   isCreatingTask && styles.disabledButton
                 ]}
-                onPress={() => {
-                  console.log('🔘 Bouton "Attribuer la tâche" cliqué');
-                  assignTaskToManager();
-                }}
+                onPress={assignTaskToManager}
                 disabled={isCreatingTask}
               >
                 <Text style={styles.primaryButtonText}>
@@ -1576,6 +1544,16 @@ const styles = StyleSheet.create({
     color: '#374151',
     marginTop: 6,
     textAlign: 'center',
+  },
+  statsSection: {
+    paddingHorizontal: 24,
+    marginBottom: 32,
+  },
+  statsTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1a1a1a',
+    marginBottom: 16,
   },
 
   alertBadge: {

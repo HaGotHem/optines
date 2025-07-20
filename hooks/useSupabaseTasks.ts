@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useSupabaseWorkingHours } from './useSupabaseWorkingHours';
+import { useTaskRefresh } from '../contexts/TaskRefreshContext';
 
 interface Task {
   id: string;
@@ -57,10 +58,21 @@ export const useSupabaseTasks = (filters: TaskFilters = {}) => {
     store_id: filters.store_id || 1 
   });
 
+  // Hook pour le rafraîchissement global
+  const { refreshTrigger } = useTaskRefresh();
+
   useEffect(() => {
     console.log('🔄 [HOOK] useEffect déclenché - filtres changés:', filters);
     loadTasks();
   }, [filters.managerId, filters.date, filters.isCompleted, filters.isPinned]);
+
+  // Écouter les rafraîchissements globaux
+  useEffect(() => {
+    if (refreshTrigger > 0) {
+      console.log('🔄 [HOOK] Rafraîchissement global détecté, rechargement des tâches');
+      loadTasks();
+    }
+  }, [refreshTrigger]);
 
   const loadTasks = async () => {
     try {
@@ -117,10 +129,6 @@ export const useSupabaseTasks = (filters: TaskFilters = {}) => {
     try {
       setError(null);
       
-      console.log('🔄 [HOOK] Création de tâche:', taskData);
-      console.log('🔄 [HOOK] Type de taskData:', typeof taskData);
-      console.log('🔄 [HOOK] taskData JSON:', JSON.stringify(taskData, null, 2));
-      
       // Validation des horaires de travail
       if (workingHours && !isTimeRangeWithinWorkingHours(taskData.start_time, taskData.end_time)) {
         const errorMessage = `❌ Impossible de créer la tâche : les horaires (${taskData.start_time} - ${taskData.end_time}) sont en dehors des horaires de travail du magasin (${workingHours.start_time} - ${workingHours.end_time})`;
@@ -135,39 +143,27 @@ export const useSupabaseTasks = (filters: TaskFilters = {}) => {
         store_id: taskData.store_id || 1 // Par défaut, magasin 1
       };
       
-      console.log('🔄 [HOOK] Envoi à Supabase avec taskDataWithStore:', JSON.stringify(taskDataWithStore, null, 2));
-      
       const { data, error } = await supabase
         .from('scheduled_tasks')
         .insert([taskDataWithStore])
         .select()
         .single();
 
-      console.log('🔄 [HOOK] Réponse Supabase:', { data, error });
-      
       if (error) {
-        console.error('🔄 [HOOK] Erreur Supabase détaillée:', error);
-        console.error('🔄 [HOOK] Message d\'erreur:', error.message);
-        console.error('🔄 [HOOK] Détails:', error.details);
-        console.error('🔄 [HOOK] Hint:', error.hint);
+        console.error('❌ Erreur Supabase:', error.message);
         throw error;
       }
-      
-      console.log('🔄 [HOOK] Tâche créée avec succès:', data);
       
       setTasks(prev => [data, ...prev]);
       
       // Forcer le rechargement des tâches pour s'assurer que tout est synchronisé
       setTimeout(() => {
-        console.log('🔄 [HOOK] Rechargement forcé après création');
         loadTasks();
       }, 500);
       
       return { success: true, task: data };
     } catch (err) {
-      console.error('Erreur lors de la création de la tâche:', err);
-      console.error('Type d\'erreur:', typeof err);
-      console.error('Erreur complète:', JSON.stringify(err, null, 2));
+      console.error('Erreur création tâche:', err);
       
       let errorMessage = 'Erreur inconnue';
       if (err instanceof Error) {
