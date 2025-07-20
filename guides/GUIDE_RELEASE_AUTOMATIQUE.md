@@ -47,6 +47,12 @@ npm run release
 ```
 **Fonction :** Crée automatiquement une release si le seuil de 20 modifications est atteint.
 
+### 3. Release forcée
+```bash
+npm run force-release
+```
+**Fonction :** Force la création d'une release même si le seuil n'est pas atteint.
+
 ## 🔧 Configuration
 
 ### Seuil de modifications

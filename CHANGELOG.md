@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.0.3] - 2025-07-20
+
+### 📊 Résumé des modifications
+- **Total des modifications:** 2
+- **Fichiers modifiés:** 2
+
+### 🔄 Derniers commits
+- `30fe01d` 🚀 Release v1.0.2 - Mise à jour automatique
+- `28906db` 🚀 Release v1.0.1 - Mise à jour automatique
+- `9f2d20d` Correction du système de libération automatique des employés
+- `0394eba` debug: Amélioration du chargement des employés et tâches dans le calculateur
+- `e13ee00` fix: Correction des tâches planifiées - passage complet à Supabase
+- `f9a2d53` feat: Ajout système de sélection d'employés et corrections diverses
+
+
 ## [1.0.2] - 2025-07-20
 
 ### 📊 Résumé des modifications
@@ -70,4 +85,22 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - Vérification automatique des dépendances
 - Options multiples (vérifier seulement, créer automatique, forcer)
 - Affichage de l'historique des releases
-- Instructions détaillées pour les releases GitHub 
+- Instructions détaillées pour les releases GitHub
+
+## [1.0.2] - 2024-12-19
+
+### 🐛 Correction du système de release
+- **Release forcée** maintenant fonctionnelle dans release.bat
+- **Script force-release** ajouté pour forcer une release
+- **Paramètre --force** ajouté au script auto-release.js
+- **Commit et push** fonctionnels même si seuil non atteint
+- **Version incrémentée** automatiquement lors des releases forcées
+
+### 📦 Nouveaux scripts
+- `npm run force-release` - Force une release même si seuil non atteint
+- Support du paramètre `--force` dans auto-release.js
+
+### 🔧 Corrections techniques
+- Fonction `createRelease()` ajoutée avec paramètre force
+- Gestion des arguments de ligne de commande
+- Retour de statut pour indiquer le succès/échec 
