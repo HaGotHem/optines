@@ -131,6 +131,7 @@ export interface Database {
           manager_id: number;
           created_at: string;
           updated_at: string;
+          recurring_event_id?: string | null;
         };
         Insert: {
           id?: string;
@@ -149,6 +150,7 @@ export interface Database {
           manager_id: number;
           created_at?: string;
           updated_at?: string;
+          recurring_event_id?: string | null;
         };
         Update: {
           id?: string;
@@ -165,6 +167,69 @@ export interface Database {
           is_pinned?: boolean;
           is_completed?: boolean;
           manager_id?: number;
+          created_at?: string;
+          updated_at?: string;
+          recurring_event_id?: string | null;
+        };
+      };
+      scheduled_events: {
+        Row: {
+          id: string;
+          title: string;
+          start_time: string;
+          duration_minutes: number;
+          packages: number;
+          team_size: number;
+          manager_section: string;
+          manager_initials: string;
+          palette_condition: boolean;
+          recurrence_type: 'none' | 'daily' | 'weekly' | 'weekdays' | 'custom';
+          recurrence_days: number[] | null;
+          start_date: string;
+          end_date: string | null;
+          is_active: boolean;
+          manager_id: number;
+          store_id: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          title: string;
+          start_time: string;
+          duration_minutes: number;
+          packages: number;
+          team_size: number;
+          manager_section: string;
+          manager_initials: string;
+          palette_condition?: boolean;
+          recurrence_type: 'none' | 'daily' | 'weekly' | 'weekdays' | 'custom';
+          recurrence_days?: number[] | null;
+          start_date: string;
+          end_date?: string | null;
+          is_active?: boolean;
+          manager_id: number;
+          store_id: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          title?: string;
+          start_time?: string;
+          duration_minutes?: number;
+          packages?: number;
+          team_size?: number;
+          manager_section?: string;
+          manager_initials?: string;
+          palette_condition?: boolean;
+          recurrence_type?: 'none' | 'daily' | 'weekly' | 'weekdays' | 'custom';
+          recurrence_days?: number[] | null;
+          start_date?: string;
+          end_date?: string | null;
+          is_active?: boolean;
+          manager_id?: number;
+          store_id?: number;
           created_at?: string;
           updated_at?: string;
         };
@@ -238,6 +303,7 @@ export interface Database {
 export type User = Database['public']['Tables']['users']['Row'];
 export type TeamMember = Database['public']['Tables']['team_members']['Row'];
 export type ScheduledTask = Database['public']['Tables']['scheduled_tasks']['Row'];
+export type ScheduledEvent = Database['public']['Tables']['scheduled_events']['Row'];
 export type TaskAssignment = Database['public']['Tables']['task_assignments']['Row'];
 export type UserPreference = Database['public']['Tables']['user_preferences']['Row'];
 
@@ -245,6 +311,7 @@ export type UserPreference = Database['public']['Tables']['user_preferences']['R
 export type UserInsert = Database['public']['Tables']['users']['Insert'];
 export type TeamMemberInsert = Database['public']['Tables']['team_members']['Insert'];
 export type ScheduledTaskInsert = Database['public']['Tables']['scheduled_tasks']['Insert'];
+export type ScheduledEventInsert = Database['public']['Tables']['scheduled_events']['Insert'];
 export type TaskAssignmentInsert = Database['public']['Tables']['task_assignments']['Insert'];
 export type UserPreferenceInsert = Database['public']['Tables']['user_preferences']['Insert'];
 
@@ -252,5 +319,6 @@ export type UserPreferenceInsert = Database['public']['Tables']['user_preference
 export type UserUpdate = Database['public']['Tables']['users']['Update'];
 export type TeamMemberUpdate = Database['public']['Tables']['team_members']['Update'];
 export type ScheduledTaskUpdate = Database['public']['Tables']['scheduled_tasks']['Update'];
+export type ScheduledEventUpdate = Database['public']['Tables']['scheduled_events']['Update'];
 export type TaskAssignmentUpdate = Database['public']['Tables']['task_assignments']['Update'];
 export type UserPreferenceUpdate = Database['public']['Tables']['user_preferences']['Update']; 

@@ -9,6 +9,8 @@ import { useSupabaseUsers } from '../hooks/useSupabaseUsers';
 import { useUserProfile } from '../hooks/useUserProfile';
 import { useTheme } from '../contexts/ThemeContext';
 import { useCustomAlert } from '../components/CustomAlert';
+import { useSections } from '../contexts/SectionsContext';
+import { SectionsManager } from '../components/SectionsManager';
 
 export default function EmployeeManagement() {
   const [showAddForm, setShowAddForm] = useState(false);
@@ -24,25 +26,13 @@ export default function EmployeeManagement() {
     store_id: 0,
   });
 
-  // Rayons de supermarché disponibles
-  const [availableSections, setAvailableSections] = useState([
-    'Fruits & Légumes',
-    'Boucherie',
-    'Poissonnerie', 
-    'Charcuterie',
-    'Fromage',
-    'Épicerie Salée',
-    'Épicerie Sucrée',
-    'Surgelés',
-    'Produits Frais',
-    'Boulangerie',
-    'Hygiène & Beauté',
-    'Maison & Jardin'
-  ]);
+  // Utiliser le contexte centralisé pour les rayons
+  const { availableSections, addSection, removeSection } = useSections();
   
   const [showSectionDropdown, setShowSectionDropdown] = useState(false);
   const [showAddSectionModal, setShowAddSectionModal] = useState(false);
   const [newSectionName, setNewSectionName] = useState('');
+  const [showSectionsManager, setShowSectionsManager] = useState(false);
 
   const { isDark } = useTheme();
   const { showAlert, AlertComponent } = useCustomAlert();
@@ -146,17 +136,25 @@ export default function EmployeeManagement() {
 
   // Fonctions pour gérer les rayons
   const addNewSection = () => {
-    if (newSectionName.trim() && !availableSections.includes(newSectionName.trim())) {
-      setAvailableSections([...availableSections, newSectionName.trim()]);
-      setFormData({ ...formData, section: newSectionName.trim() });
-      setNewSectionName('');
-      setShowAddSectionModal(false);
-      setShowSectionDropdown(false);
+    const trimmedName = newSectionName.trim();
+    if (trimmedName) {
+      const success = addSection(trimmedName);
+      if (success) {
+        setFormData({ ...formData, section: trimmedName });
+        setNewSectionName('');
+        setShowAddSectionModal(false);
+        setShowSectionDropdown(false);
+      } else {
+        // Le rayon existe déjà
+        showAlert('Information', 'Ce rayon existe déjà dans la liste', [
+          { text: 'OK', style: 'default' }
+        ]);
+      }
     }
   };
 
-  const removeSection = (sectionToRemove: string) => {
-    setAvailableSections(availableSections.filter(section => section !== sectionToRemove));
+  const handleRemoveSection = (sectionToRemove: string) => {
+    removeSection(sectionToRemove);
     if (formData.section === sectionToRemove) {
       setFormData({ ...formData, section: '' });
     }
@@ -246,20 +244,10 @@ export default function EmployeeManagement() {
         </View>
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <TouchableOpacity
-            onPress={() => {
-              console.log('🧪 Test popup simple avec CustomAlert');
-              showAlert(
-                'Test',
-                'Popup de test personnalisée - Fonctionne-t-elle ?',
-                [
-                  { text: 'Annuler', style: 'cancel', onPress: () => console.log('🧪 Annuler cliqué') },
-                  { text: 'OK', style: 'default', onPress: () => console.log('🧪 OK cliqué') }
-                ]
-              );
-            }}
-            style={[styles.addButton, { backgroundColor: '#f59e0b' }]}
+            onPress={() => setShowSectionsManager(true)}
+            style={[styles.addButton, { backgroundColor: '#10b981' }]}
           >
-            <Text style={styles.addButtonText}>Test</Text>
+            <Text style={styles.addButtonText}>Rayons</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setShowAddForm(true)}
@@ -365,7 +353,7 @@ export default function EmployeeManagement() {
                             </Text>
                           </TouchableOpacity>
                           <TouchableOpacity
-                            onPress={() => removeSection(section)}
+                            onPress={() => handleRemoveSection(section)}
                             style={styles.removeButton}
                           >
                             <X size={16} color="#ef4444" strokeWidth={2} />
@@ -647,6 +635,13 @@ export default function EmployeeManagement() {
           </View>
         </View>
       )}
+
+      {/* Gestionnaire centralisé des rayons */}
+      <SectionsManager
+        visible={showSectionsManager}
+        onClose={() => setShowSectionsManager(false)}
+        isDark={isDark}
+      />
 
       <AlertComponent />
     </SafeAreaView>
@@ -1370,5 +1365,13 @@ const styles = StyleSheet.create({
   modalAddButtonText: {
     color: '#ffffff',
     fontWeight: '500',
+  },
+  breakButton: {
+    backgroundColor: '#fef3c7',
+    borderRadius: 8,
+    padding: 8,
+  },
+  breakButtonDark: {
+    backgroundColor: '#451a03',
   },
 });

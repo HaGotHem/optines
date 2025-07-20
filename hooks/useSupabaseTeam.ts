@@ -67,17 +67,36 @@ export const useSupabaseTeam = (managerId?: string | number) => {
         .eq('manager_id', managerId.toString())
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        // Si c'est une erreur de table inexistante, retourner un tableau vide
+        if (error.message.includes('does not exist')) {
+          console.log('⚠️ useSupabaseTeam - Table team_members n\'existe pas encore');
+          setMembers([]);
+          return;
+        }
+        throw error;
+      }
       
       console.log('✅ useSupabaseTeam - Members loaded:', {
         count: data ? data.length : 0,
         members: data ? data.map(m => ({id: m.id, name: m.name})) : []
       });
       
+      // Si aucun employé trouvé, c'est normal - pas d'erreur
+      if (!data || data.length === 0) {
+        console.log('ℹ️ useSupabaseTeam - Aucun employé trouvé pour ce manager (normal si nouveau manager)');
+      }
+      
       setMembers(data || []);
     } catch (err) {
       console.error('❌ useSupabaseTeam - Error loading members:', err);
-      setError(err instanceof Error ? err.message : 'Erreur inconnue');
+      // Ne pas afficher d'erreur si c'est juste qu'il n'y a pas d'employés
+      if (err instanceof Error && err.message.includes('No rows found')) {
+        console.log('ℹ️ useSupabaseTeam - Aucun employé trouvé (normal)');
+        setMembers([]);
+      } else {
+        setError(err instanceof Error ? err.message : 'Erreur inconnue');
+      }
     } finally {
       setIsLoading(false);
     }

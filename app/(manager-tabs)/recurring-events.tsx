@@ -8,19 +8,38 @@ import {
   TouchableOpacity,
   Alert,
   RefreshControl,
+  Modal,
+  TextInput,
+  Switch,
 } from 'react-native';
-import { ArrowLeft, Calendar, Clock, Package, Users, Plus, Edit, Trash2, Play, Pause, RotateCcw } from 'lucide-react-native';
+import { ArrowLeft, Calendar, Clock, Package, Users, Plus, Edit, Trash2, Play, Pause, RotateCcw, X } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useSupabaseAuth } from '../../hooks/useSupabaseAuth';
 import { useSupabaseEvents, ScheduledEvent } from '../../hooks/useSupabaseEvents';
+import DatePickerCalendar from '../../components/DatePickerCalendar';
 
 export default function RecurringEventsTab() {
   const { isDark } = useTheme();
   const { user } = useSupabaseAuth();
   const [refreshing, setRefreshing] = useState(false);
   
-  const managerId = user?.app_metadata?.user_id?.toString() || user?.id?.toString();
+  // États pour la création d'événements
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [eventTitle, setEventTitle] = useState('');
+  const [eventStartTime, setEventStartTime] = useState('09:00');
+  const [eventDuration, setEventDuration] = useState('60');
+  const [eventPackages, setEventPackages] = useState('100');
+  const [eventTeamSize, setEventTeamSize] = useState('2');
+  const [eventRecurrenceType, setEventRecurrenceType] = useState<'daily'|'weekly'|'weekdays'|'custom'>('daily');
+  const [eventCustomDays, setEventCustomDays] = useState<number[]>([]);
+  const [eventStartDate, setEventStartDate] = useState(new Date());
+  const [eventEndDate, setEventEndDate] = useState<Date | null>(null);
+  const [showStartDatePicker, setShowStartDatePicker] = useState(false);
+  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  
+  const managerId = parseInt(user?.app_metadata?.user_id?.toString() || user?.id?.toString() || '0');
   
   const {
     events,
@@ -140,7 +159,7 @@ export default function RecurringEventsTab() {
 
   const stats = getEventStats();
 
-  if (!managerId) {
+  if (!managerId || managerId === 0) {
     return (
       <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
         <View style={styles.centerContainer}>
@@ -171,7 +190,7 @@ export default function RecurringEventsTab() {
         </View>
         
         <TouchableOpacity
-          onPress={() => router.push('/(manager-tabs)/calculator')}
+          onPress={() => setShowCreateModal(true)}
           style={[styles.addButton, isDark && styles.addButtonDark]}
         >
           <Plus color="#ffffff" size={20} strokeWidth={2} />
@@ -239,7 +258,7 @@ export default function RecurringEventsTab() {
             </Text>
             <TouchableOpacity
               style={[styles.createButton, isDark && styles.createButtonDark]}
-              onPress={() => router.push('/(manager-tabs)/calculator')}
+              onPress={() => setShowCreateModal(true)}
             >
               <Plus color="#ffffff" size={20} strokeWidth={2} />
               <Text style={styles.createButtonText}>Créer un événement</Text>
@@ -248,31 +267,40 @@ export default function RecurringEventsTab() {
         ) : (
           events.map((event) => {
             const nextOccurrence = getNextOccurrence(event);
-            
             return (
               <View key={event.id} style={[styles.eventCard, isDark && styles.cardDark]}>
                 {/* Header de l'événement */}
                 <View style={styles.eventHeader}>
-                  <View style={styles.eventTitleSection}>
-                    <View style={styles.eventTitleRow}>
-                      <Text style={styles.eventIcon}>
-                        {getRecurrenceIcon(event.recurrence_type)}
-                      </Text>
-                      <Text style={[styles.eventTitle, isDark && styles.textDark]}>
-                        {event.title}
-                      </Text>
-                      <View style={[
-                        styles.statusBadge,
-                        { backgroundColor: getStatusColor(event.is_active) }
-                      ]}>
-                        <Text style={styles.statusText}>
-                          {event.is_active ? 'Actif' : 'Inactif'}
-                        </Text>
-                      </View>
-                    </View>
-                    <Text style={[styles.eventDescription, isDark && styles.textSecondaryDark]}>
-                      {getRecurrenceDescription(event)}
-                    </Text>
+                  <View style={styles.eventTitleRow}>
+                    <Text style={[styles.eventTitle, isDark && styles.textDark]}>{event.title} <Text style={{color:'#10b981', fontWeight:'bold'}}>• Récurrent</Text></Text>
+                    <TouchableOpacity
+                      onPress={() => {
+                        Alert.alert(
+                          'Supprimer l\'événement récurrent',
+                          `Voulez-vous vraiment supprimer "${event.title}" ?\n\nCela supprimera aussi toutes les tâches générées par cet événement.`,
+                          [
+                            { text: 'Annuler', style: 'cancel' },
+                            {
+                              text: 'Supprimer',
+                              style: 'destructive',
+                              onPress: async () => {
+                                const result = await deleteEvent(event.id);
+                                if (result.success) {
+                                  Alert.alert('Succès', 'Événement supprimé');
+                                  refresh();
+                                } else {
+                                  Alert.alert('Erreur', result.error || 'Impossible de supprimer l\'événement');
+                                }
+                              }
+                            }
+                          ]
+                        );
+                      }}
+                      style={{marginLeft: 8, padding: 4}}
+                      accessibilityLabel="Supprimer l'événement"
+                    >
+                      <Trash2 color="#ef4444" size={20} />
+                    </TouchableOpacity>
                   </View>
                 </View>
 
@@ -357,6 +385,314 @@ export default function RecurringEventsTab() {
           })
         )}
       </ScrollView>
+
+      {/* Modal de création d'événement */}
+      <Modal
+        visible={showCreateModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowCreateModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, isDark && styles.modalContentDark]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, isDark && styles.textDark]}>Nouvel événement récurrent</Text>
+              <TouchableOpacity onPress={() => setShowCreateModal(false)}>
+                <X color={isDark ? '#64748b' : '#6b7280'} size={24} strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.modalScroll}>
+              <View style={styles.inputContainer}>
+                <Text style={[styles.inputLabel, isDark && styles.textDark]}>Titre *</Text>
+                <TextInput
+                  style={[styles.input, isDark && styles.inputDark]}
+                  value={eventTitle}
+                  onChangeText={setEventTitle}
+                  placeholder="Ex: Inventaire mensuel"
+                  placeholderTextColor={isDark ? '#64748b' : '#9ca3af'}
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={[styles.inputLabel, isDark && styles.textDark]}>Heure de début *</Text>
+                <TouchableOpacity 
+                  style={[styles.dateSelector, isDark && styles.dateSelectorDark]}
+                  onPress={() => setShowTimePicker(true)}
+                >
+                  <Clock color={isDark ? '#60a5fa' : '#3b82f6'} size={20} strokeWidth={2} />
+                  <Text style={[styles.dateText, isDark && styles.textDark]}>
+                    {eventStartTime}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={[styles.inputLabel, isDark && styles.textDark]}>Durée (minutes) *</Text>
+                <TextInput
+                  style={[styles.input, isDark && styles.inputDark]}
+                  value={eventDuration}
+                  onChangeText={setEventDuration}
+                  placeholder="Ex: 90"
+                  keyboardType="numeric"
+                  placeholderTextColor={isDark ? '#64748b' : '#9ca3af'}
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={[styles.inputLabel, isDark && styles.textDark]}>Nombre de colis *</Text>
+                <TextInput
+                  style={[styles.input, isDark && styles.inputDark]}
+                  value={eventPackages}
+                  onChangeText={setEventPackages}
+                  placeholder="Ex: 150"
+                  keyboardType="numeric"
+                  placeholderTextColor={isDark ? '#64748b' : '#9ca3af'}
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={[styles.inputLabel, isDark && styles.textDark]}>Taille de l'équipe *</Text>
+                <TextInput
+                  style={[styles.input, isDark && styles.inputDark]}
+                  value={eventTeamSize}
+                  onChangeText={setEventTeamSize}
+                  placeholder="Ex: 3"
+                  keyboardType="numeric"
+                  placeholderTextColor={isDark ? '#64748b' : '#9ca3af'}
+                />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={[styles.inputLabel, isDark && styles.textDark]}>Date de début *</Text>
+                <TouchableOpacity 
+                  style={[styles.dateSelector, isDark && styles.dateSelectorDark]} 
+                  onPress={() => setShowStartDatePicker(true)}
+                >
+                  <Calendar color={isDark ? '#60a5fa' : '#3b82f6'} size={20} strokeWidth={2} />
+                  <Text style={[styles.dateText, isDark && styles.textDark]}>
+                    {eventStartDate.toLocaleDateString('fr-FR')}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={[styles.inputLabel, isDark && styles.textDark]}>Type de récurrence *</Text>
+                <View style={styles.recurrenceButtons}>
+                  {[
+                    { label: 'Quotidien', value: 'daily' },
+                    { label: 'Hebdomadaire', value: 'weekly' },
+                    { label: 'Jours ouvrés', value: 'weekdays' },
+                    { label: 'Personnalisé', value: 'custom' }
+                  ].map((option) => (
+                    <TouchableOpacity
+                      key={option.value}
+                      style={[
+                        styles.recurrenceButton,
+                        eventRecurrenceType === option.value && styles.recurrenceButtonActive,
+                        isDark && styles.recurrenceButtonDark
+                      ]}
+                      onPress={() => setEventRecurrenceType(option.value as any)}
+                    >
+                      <Text style={[
+                        styles.recurrenceButtonText,
+                        eventRecurrenceType === option.value && styles.recurrenceButtonTextActive,
+                        isDark && styles.textDark
+                      ]}>
+                        {option.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {eventRecurrenceType === 'custom' && (
+                <View style={styles.inputContainer}>
+                  <Text style={[styles.inputLabel, isDark && styles.textDark]}>Jours de la semaine</Text>
+                  <View style={styles.daysSelector}>
+                    {[
+                      { day: 1, label: 'Lun' },
+                      { day: 2, label: 'Mar' },
+                      { day: 3, label: 'Mer' },
+                      { day: 4, label: 'Jeu' },
+                      { day: 5, label: 'Ven' },
+                      { day: 6, label: 'Sam' },
+                      { day: 0, label: 'Dim' }
+                    ].map(({ day, label }) => (
+                      <TouchableOpacity
+                        key={day}
+                        style={[
+                          styles.dayButton,
+                          eventCustomDays.includes(day) && styles.dayButtonActive,
+                          isDark && styles.dayButtonDark
+                        ]}
+                        onPress={() => {
+                          if (eventCustomDays.includes(day)) {
+                            setEventCustomDays(eventCustomDays.filter(d => d !== day));
+                          } else {
+                            setEventCustomDays([...eventCustomDays, day]);
+                          }
+                        }}
+                      >
+                        <Text style={[
+                          styles.dayButtonText,
+                          eventCustomDays.includes(day) && styles.dayButtonTextActive,
+                          isDark && styles.textDark
+                        ]}>
+                          {label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              <View style={[styles.inputContainer]}>
+                <Text style={[styles.inputLabel, isDark && styles.textDark]}>Date limite de récurrence</Text>
+                <View style={styles.datePickerContainer}>
+                  <TouchableOpacity style={[styles.dateSelector, isDark && styles.dateSelectorDark]} onPress={() => setShowEndDatePicker(true)}>
+                    <Calendar color="#3b82f6" size={20} strokeWidth={2} />
+                    <Text style={[styles.dateText, isDark && styles.textDark]}>{eventEndDate ? eventEndDate.toLocaleDateString('fr-FR') : 'Aucune (illimitée)'}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity 
+                style={[styles.modalButton, isDark && styles.modalButtonDark]} 
+                onPress={() => setShowCreateModal(false)}
+              >
+                <Text style={[styles.modalButtonText, isDark && styles.textDark]}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.primaryButton, isDark && styles.primaryButtonDark]}
+                onPress={async () => {
+                  if (!eventTitle.trim() || !eventStartTime || !eventDuration || !eventPackages || !eventTeamSize) {
+                    Alert.alert('Erreur', 'Veuillez remplir tous les champs obligatoires');
+                    return;
+                  }
+
+                  if (eventRecurrenceType === 'custom' && eventCustomDays.length === 0) {
+                    Alert.alert('Erreur', 'Veuillez sélectionner au moins un jour pour la récurrence personnalisée');
+                    return;
+                  }
+
+                  const eventData = {
+                    title: eventTitle,
+                    start_time: eventStartTime,
+                    duration_minutes: parseInt(eventDuration),
+                    packages: parseInt(eventPackages),
+                    team_size: parseInt(eventTeamSize),
+                    manager_section: 'Section A', // À adapter selon le profil utilisateur
+                    manager_initials: 'MA', // À adapter selon le profil utilisateur
+                    palette_condition: false,
+                    recurrence_type: eventRecurrenceType,
+                    recurrence_days: eventRecurrenceType === 'custom' ? eventCustomDays : null,
+                    start_date: eventStartDate.toISOString().split('T')[0],
+                    end_date: eventEndDate ? eventEndDate.toISOString().split('T')[0] : null,
+                    manager_id: managerId,
+                    store_id: 1, // À adapter selon le magasin de l'utilisateur
+                    is_active: true
+                  };
+
+                  const result = await createEvent(eventData);
+                  if (result.success) {
+                    setShowCreateModal(false);
+                    // Réinitialiser les champs
+                    setEventTitle('');
+                    setEventStartTime('09:00');
+                    setEventDuration('60');
+                    setEventPackages('100');
+                    setEventTeamSize('2');
+                    setEventRecurrenceType('daily');
+                    setEventCustomDays([]);
+                    setEventStartDate(new Date());
+                    setEventEndDate(null);
+                    Alert.alert('Succès', 'Événement récurrent créé !');
+                  } else {
+                    Alert.alert('Erreur', result.error || 'Erreur lors de la création');
+                  }
+                }}
+              >
+                <Text style={styles.primaryButtonText}>Créer</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+
+        {/* DatePicker pour la date de début */}
+        <DatePickerCalendar
+          visible={showStartDatePicker}
+          onClose={() => setShowStartDatePicker(false)}
+          onDateSelect={setEventStartDate}
+          selectedDate={eventStartDate}
+          minDate={new Date()}
+          maxDate={new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)}
+        />
+
+        {/* DatePicker pour la date de fin */}
+        <DatePickerCalendar
+          visible={showEndDatePicker}
+          onClose={() => setShowEndDatePicker(false)}
+          onDateSelect={setEventEndDate}
+          selectedDate={eventEndDate || new Date()}
+          minDate={eventStartDate}
+          maxDate={new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)}
+        />
+
+        {/* TimePicker pour l'heure de début */}
+        <Modal
+          visible={showTimePicker}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setShowTimePicker(false)}
+        >
+          <View style={styles.timePickerOverlay}>
+            <View style={[styles.timePickerContent, isDark && styles.modalContentDark]}>
+              <Text style={[styles.timePickerTitle, isDark && styles.textDark]}>Sélectionner l'heure</Text>
+              <View style={styles.timePickerGrid}>
+                {Array.from({ length: 24 }, (_, hour) => (
+                  <View key={hour} style={styles.timePickerRow}>
+                    {Array.from({ length: 4 }, (_, minuteIndex) => {
+                      const minute = minuteIndex * 15;
+                      const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+                      return (
+                        <TouchableOpacity
+                          key={minute}
+                          style={[
+                            styles.timeButton,
+                            eventStartTime === timeString && styles.timeButtonActive,
+                            isDark && styles.timeButtonDark
+                          ]}
+                          onPress={() => {
+                            setEventStartTime(timeString);
+                            setShowTimePicker(false);
+                          }}
+                        >
+                          <Text style={[
+                            styles.timeButtonText,
+                            eventStartTime === timeString && styles.timeButtonTextActive,
+                            isDark && styles.textDark
+                          ]}>
+                            {timeString}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                ))}
+              </View>
+              <TouchableOpacity
+                style={[styles.modalButton, isDark && styles.modalButtonDark]}
+                onPress={() => setShowTimePicker(false)}
+              >
+                <Text style={[styles.modalButtonText, isDark && styles.textDark]}>Fermer</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -626,5 +962,261 @@ const styles = StyleSheet.create({
   },
   textSecondaryDark: {
     color: '#94a3b8',
+  },
+  // Styles pour le modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 20,
+    width: '90%',
+    maxWidth: 400,
+    alignSelf: 'center',
+    overflow: 'hidden',
+  },
+  modalContentDark: {
+    backgroundColor: '#1f2937',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  modalScroll: {
+    maxHeight: 400,
+  },
+  inputContainer: {
+    marginBottom: 16,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    backgroundColor: '#ffffff',
+  },
+  inputDark: {
+    borderColor: '#4b5563',
+    backgroundColor: '#374151',
+    color: '#f4f4f5',
+  },
+  dateSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 12,
+    padding: 12,
+    backgroundColor: '#ffffff',
+    alignSelf: 'stretch',
+    maxWidth: '100%',
+    overflow: 'hidden',
+  },
+  dateSelectorDark: {
+    borderColor: '#4b5563',
+    backgroundColor: '#374151',
+  },
+  dateText: {
+    marginLeft: 8,
+    fontSize: 16,
+    color: '#111827',
+  },
+  dateTextDark: {
+    color: '#f4f4f5',
+  },
+  recurrenceButtons: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  recurrenceButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    backgroundColor: '#ffffff',
+  },
+  recurrenceButtonDark: {
+    borderColor: '#4b5563',
+    backgroundColor: '#374151',
+  },
+  recurrenceButtonActive: {
+    backgroundColor: '#3b82f6',
+    borderColor: '#3b82f6',
+  },
+  recurrenceButtonText: {
+    fontSize: 14,
+    color: '#374151',
+  },
+  recurrenceButtonTextActive: {
+    color: '#ffffff',
+  },
+  daysSelector: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  dayButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    backgroundColor: '#ffffff',
+  },
+  dayButtonDark: {
+    borderColor: '#4b5563',
+    backgroundColor: '#374151',
+  },
+  dayButtonActive: {
+    backgroundColor: '#3b82f6',
+    borderColor: '#3b82f6',
+  },
+  dayButtonText: {
+    fontSize: 12,
+    color: '#374151',
+  },
+  dayButtonTextActive: {
+    color: '#ffffff',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 20,
+    gap: 12,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+  },
+  modalButtonDark: {
+    borderColor: '#4b5563',
+    backgroundColor: '#374151',
+  },
+  modalButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#374151',
+  },
+  primaryButton: {
+    backgroundColor: '#3b82f6',
+    borderColor: '#3b82f6',
+  },
+  primaryButtonDark: {
+    backgroundColor: '#3b82f6',
+    borderColor: '#3b82f6',
+  },
+  primaryButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  timePickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  timePickerContent: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 20,
+    width: '90%',
+    maxHeight: '80%',
+  },
+  timePickerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  timePickerGrid: {
+    maxHeight: 300,
+  },
+  timePickerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  timeButton: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    marginHorizontal: 2,
+  },
+  timeButtonDark: {
+    borderColor: '#4b5563',
+    backgroundColor: '#374151',
+  },
+  timeButtonActive: {
+    backgroundColor: '#3b82f6',
+    borderColor: '#3b82f6',
+  },
+  timeButtonText: {
+    fontSize: 12,
+    color: '#374151',
+  },
+  timeButtonTextActive: {
+    color: '#ffffff',
+  },
+  datePickerContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 8,
+    marginTop: 4,
+    marginBottom: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+    alignSelf: 'stretch',
+    maxWidth: '100%',
+    overflow: 'hidden',
+  },
+  centerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#ef4444',
+    textAlign: 'center',
+  },
+  textDark: {
+    color: '#f4f4f5',
   },
 }); 

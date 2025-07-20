@@ -9,6 +9,7 @@ import { notificationService } from '../services/NotificationService';
 import { ThemeProvider } from '../contexts/ThemeContext';
 import { SupabaseProvider } from '../contexts/SupabaseContext';
 import { TaskRefreshProvider } from '../contexts/TaskRefreshContext';
+import { SectionsProvider } from '../contexts/SectionsContext';
 
 export default function RootLayout() {
   useFrameworkReady();
@@ -24,16 +25,18 @@ export default function RootLayout() {
     <SupabaseProvider>
       <ThemeProvider>
         <TaskRefreshProvider>
-          {/* {isTempMode && <TempWarning />} */}
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="index" />
-            <Stack.Screen name="login" />
-            <Stack.Screen name="(manager-tabs)" />
-            <Stack.Screen name="directeur" />
-            <Stack.Screen name="+not-found" />
-          </Stack>
-          <StatusBar style="auto" />
-          <NotificationBanner />
+          <SectionsProvider>
+            {/* {isTempMode && <TempWarning />} */}
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="index" />
+              <Stack.Screen name="login" />
+              <Stack.Screen name="(manager-tabs)" />
+              <Stack.Screen name="directeur" />
+              <Stack.Screen name="+not-found" />
+            </Stack>
+            <StatusBar style="auto" />
+            <NotificationBanner />
+          </SectionsProvider>
         </TaskRefreshProvider>
       </ThemeProvider>
     </SupabaseProvider>

@@ -249,25 +249,6 @@ export default function LoginScreen() {
     // Note: React Native n'a pas de focus automatique, l'utilisateur devra cliquer manuellement
   }, [lastUsername, showPopup]);
 
-  // Fonction de connexion rapide pour le développement
-  const handleDevQuickLogin = useCallback(() => {
-    // console.log('🚀 Connexion rapide DEV activée');
-    
-    // Utiliser les identifiants de test selon le rôle
-    if (isManager) {
-      setUsername('manager1');
-      setPassword('test');
-    } else {
-      setUsername('admin.directeur');
-      setPassword('ADMIN2024!');
-    }
-    
-    // Déclencher la connexion automatiquement après un court délai
-    setTimeout(() => {
-      handleLogin();
-    }, 100);
-  }, [isManager, handleLogin]);
-
   // Optimisation avec useMemo pour éviter les recalculs
   const example = useMemo(() => {
     return {
@@ -547,17 +528,6 @@ export default function LoginScreen() {
               >
                 <Text style={styles.quickLoginText}>
                   🔄 Pré-remplir identifiant {lastUsername ? `(${lastUsername})` : '(Aucun identifiant)'}
-                </Text>
-              </TouchableOpacity>
-
-              {/* Development Quick Login Button */}
-              <TouchableOpacity
-                style={styles.devQuickLoginButton}
-                onPress={handleDevQuickLogin}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.devQuickLoginText}>
-                  🚀 Connexion rapide (DEV)
                 </Text>
               </TouchableOpacity>
 

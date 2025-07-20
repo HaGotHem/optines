@@ -11,13 +11,14 @@ import {
   TextInput,
   Alert,
 } from 'react-native';
-import { Users, Phone, Mail, MapPin, Star, Clock, Plus, X, UserPlus, Calendar, Target, Edit, ChevronDown, ArrowLeft } from 'lucide-react-native';
+import { Users, Phone, Mail, MapPin, Star, Clock, Plus, X, UserPlus, Calendar, Target, Edit, ChevronDown, ArrowLeft, Coffee, Repeat, BarChart3 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useSupabaseEmployees } from '../../hooks/useSupabaseEmployees';
 import { useSupabaseAuth } from '../../hooks/useSupabaseAuth';
 import { useUserProfile } from '../../hooks/useUserProfile';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../../contexts/ThemeContext';
+import BreakManager from '../../components/BreakManager';
 
 interface TeamMember {
   id: number;
@@ -75,6 +76,10 @@ export default function TeamTab() {
   // États pour la confirmation de suppression
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
   const [memberToDelete, setMemberToDelete] = useState<{id: number, name: string} | null>(null);
+
+  // États pour la gestion des pauses
+  const [showBreakManager, setShowBreakManager] = useState(false);
+  const [selectedEmployeeForBreaks, setSelectedEmployeeForBreaks] = useState<any>(null);
 
   // Hooks
   const { user: authUser } = useSupabaseAuth();
@@ -275,6 +280,17 @@ export default function TeamTab() {
     setShowShiftPicker(false);
   };
 
+  // Fonctions pour la gestion des pauses
+  const openBreakManager = (employee: any) => {
+    setSelectedEmployeeForBreaks(employee);
+    setShowBreakManager(true);
+  };
+
+  const closeBreakManager = () => {
+    setShowBreakManager(false);
+    setSelectedEmployeeForBreaks(null);
+  };
+
   return (
     <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
@@ -342,7 +358,7 @@ export default function TeamTab() {
             .map((member) => (
             <View key={member.id} style={styles.memberCard}>
               <View style={styles.memberHeader}>
-                <Image source={{ uri: member.avatar_url || 'https://via.placeholder.com/60' }} style={styles.avatar} />
+                <Image source={{ uri: member.avatar_url || 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMzAiIGN5PSIzMCIgcj0iMzAiIGZpbGw9IiNlNWU3ZWIiLz4KPHN2ZyB4PSIxNSIgeT0iMTUiIHdpZHRoPSIzMCIgaGVpZ2h0PSIzMCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIj4KPHBhdGggZD0iTTEyIDEyQzE0LjIwOTEgMTIgMTYgMTAuMjA5MSAxNiA4QzE2IDUuNzkwODYgMTQuMjA5MSA0IDEyIDRDOS43OTA4NiA0IDggNS43OTA4NiA4IDhDOCAxMC4yMDkxIDkuNzkwODYgMTIgMTIgMTJaIiBmaWxsPSIjOWNhM2FmIi8+CjxwYXRoIGQ9Ik0xMiAxNEM5LjMzIDE0IDcgMTEuNjcgNyA5SDE3QzE3IDExLjY3IDE0LjY3IDE0IDEyIDE0WiIgZmlsbD0iIzljYTNhZiIvPgo8L3N2Zz4KPC9zdmc+' }} style={styles.avatar} />
                 <View style={styles.memberInfo}>
                   <Text style={styles.memberName}>{member.name}</Text>
                   <Text style={styles.memberRole}>{member.role}</Text>
@@ -395,6 +411,13 @@ export default function TeamTab() {
                   <Text style={styles.actionButtonText}>Message</Text>
                 </TouchableOpacity>
                 <TouchableOpacity 
+                  style={[styles.actionButton, styles.breakButton]}
+                  onPress={() => openBreakManager(member)}
+                >
+                  <Coffee color="#f59e0b" size={18} strokeWidth={2} />
+                  <Text style={[styles.actionButtonText, styles.breakButtonText]}>Pauses</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
                   style={[styles.actionButton, styles.editButton]}
                   onPress={() => openEditModal(member)}
                 >
@@ -442,11 +465,34 @@ export default function TeamTab() {
             <Text style={styles.quickActionText}>Planifier une réunion</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.quickActionCard}>
+          <TouchableOpacity 
+            style={styles.quickActionCard}
+            onPress={() => router.push('/employee-schedule')}
+          >
             <View style={styles.quickActionIcon}>
-              <Target color="#f59e0b" size={20} strokeWidth={2} />
+              <Users color="#3b82f6" size={20} strokeWidth={2} />
             </View>
-            <Text style={styles.quickActionText}>Évaluer les performances</Text>
+            <Text style={styles.quickActionText}>Planning Employés</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.quickActionCard}
+            onPress={() => router.push('/rayon-planning')}
+          >
+            <View style={styles.quickActionIcon}>
+              <Calendar color="#f59e0b" size={20} strokeWidth={2} />
+            </View>
+            <Text style={styles.quickActionText}>Planning Rayon</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.quickActionCard}
+            onPress={() => router.push('/employee-performance')}
+          >
+            <View style={styles.quickActionIcon}>
+              <BarChart3 color="#8b5cf6" size={20} strokeWidth={2} />
+            </View>
+            <Text style={styles.quickActionText}>Performance des employés</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -903,6 +949,17 @@ export default function TeamTab() {
           </View>
         </View>
       </Modal>
+
+      {/* Break Manager Modal */}
+      {selectedEmployeeForBreaks && (
+        <BreakManager
+          employeeId={selectedEmployeeForBreaks.id}
+          employeeName={selectedEmployeeForBreaks.name}
+          selectedDate={new Date().toISOString().split('T')[0]}
+          visible={showBreakManager}
+          onClose={closeBreakManager}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -967,12 +1024,14 @@ const styles = StyleSheet.create({
   },
   statsContainer: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     paddingHorizontal: 24,
     gap: 12,
     marginBottom: 32,
+    justifyContent: 'space-between',
   },
   statCard: {
-    flex: 1,
+    width: '48%', // Pour créer une grille 2x2
     backgroundColor: '#ffffff',
     borderRadius: 12,
     padding: 16,
@@ -985,6 +1044,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 4,
     elevation: 3,
+    marginBottom: 12, // Espacement vertical entre les lignes
   },
   statValue: {
     fontSize: 20,
@@ -1136,6 +1196,14 @@ const styles = StyleSheet.create({
   },
   deleteButtonText: {
     color: '#ef4444',
+  },
+  breakButton: {
+    backgroundColor: '#fef3c7',
+    borderColor: '#f59e0b',
+  },
+  breakButtonText: {
+    color: '#f59e0b',
+    fontWeight: '600',
   },
   quickActionCard: {
     backgroundColor: '#ffffff',

@@ -28,7 +28,7 @@ export interface NotificationData {
   body: string;
   data?: any;
   scheduledDate?: Date;
-  type: 'task_reminder' | 'conflict_alert' | 'employee_update' | 'general';
+  type: 'task_reminder' | 'conflict_alert' | 'employee_update' | 'task_created' | 'general';
 }
 
 export interface NotificationHistoryItem {
@@ -55,17 +55,14 @@ export const useNotifications = () => {
 
   // Initialiser les notifications
   useEffect(() => {
-    // Désactiver toute la logique push sur le web
-    if (Platform.OS === 'web') {
-      console.log('Notifications push non supportées sur web');
-      return;
-    }
-
-    registerForPushNotificationsAsync();
+    // Désactiver temporairement les notifications push pour éviter les erreurs
+    console.log('Notifications push temporairement désactivées');
+    
+    // Charger seulement les paramètres et l'historique
     loadNotificationSettings();
     loadNotificationsHistory();
 
-    // Écouter les notifications reçues
+    // Écouter les notifications reçues (locales seulement)
     notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
       setNotification(notification);
       addNotificationToHistory(notification);
@@ -139,50 +136,9 @@ export const useNotifications = () => {
 
   // Enregistrer pour les notifications push
   const registerForPushNotificationsAsync = async () => {
-    let token;
-
-    // Sur le web, les notifications push ne sont pas supportées de la même manière
-    if (Platform.OS === 'web') {
-      console.log('Notifications push non supportées sur web');
-      return;
-    }
-
-    if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('default', {
-        name: 'default',
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#FF231F7C',
-      });
-    }
-
-    if (Device.isDevice) {
-      try {
-        const { status: existingStatus } = await Notifications.getPermissionsAsync();
-        let finalStatus = existingStatus;
-        
-        if (existingStatus !== 'granted') {
-          const { status } = await Notifications.requestPermissionsAsync();
-          finalStatus = status;
-        }
-        
-        if (finalStatus !== 'granted') {
-          console.log('Permission refusée pour les notifications');
-          return;
-        }
-        
-        token = (await Notifications.getExpoPushTokenAsync({
-          projectId: 'your-project-id', // À remplacer par votre project ID
-        })).data;
-      } catch (error) {
-        console.log('Erreur lors de l\'enregistrement des notifications:', error);
-      }
-    } else {
-      console.log('Notifications push nécessitent un appareil physique');
-    }
-
-    setExpoPushToken(token);
-    return token;
+    // Désactiver complètement les notifications push pour éviter les erreurs
+    console.log('Notifications push complètement désactivées');
+    return null;
   };
 
   // Charger les paramètres de notification

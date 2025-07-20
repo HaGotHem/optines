@@ -11,7 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { TrendingUp, Users, Calendar, Calculator, Clock, CircleCheck as CheckCircle, TriangleAlert as AlertTriangle, Package, Target, Bell, X, Check, Settings, RotateCcw } from 'lucide-react-native';
+import { TrendingUp, Users, Calendar, Calculator, Clock, CircleCheck as CheckCircle, TriangleAlert as AlertTriangle, Package, Target, Bell, X, Check, Settings, RotateCcw, LogOut } from 'lucide-react-native';
 import { router } from 'expo-router';
 import { useSupabaseTasks } from '../../hooks/useSupabaseTasks';
 import { useSupabaseAuth } from '../../hooks/useSupabaseAuth';
@@ -35,17 +35,22 @@ export default function ManagerHomeTab() {
   const [showNotificationModal, setShowNotificationModal] = useState(false);
 
   // Hooks Supabase
-  const { user } = useSupabaseAuth();
+  const { user, logout } = useSupabaseAuth();
   const today = new Date().toISOString().split('T')[0];
+  
+  // Détermination robuste du managerId (même logique que dans calculator.tsx)
+  const managerId = user?.id?.toString();
+  
   const { 
     tasks, 
     isLoading: tasksLoading, 
     getLocalStats, 
     getTasksByDate,
+    getPackagesProgress,
     completeTask 
   } = useSupabaseTasks({ 
     date: today,
-    managerId: user?.id 
+    managerId: managerId
   });
 
   // --- Stats dynamiques avec Supabase ---
@@ -65,7 +70,15 @@ export default function ManagerHomeTab() {
   const calculateStats = React.useCallback(() => {
     setLoadingStats(true);
     try {
-      const todayTasks = getTasksByDate(today);
+      console.log('🔄 [INDEX] Calcul des stats - managerId:', managerId);
+      console.log('🔄 [INDEX] Calcul des stats - today:', today);
+      console.log('🔄 [INDEX] Calcul des stats - tasks from hook:', tasks);
+      
+      // Utiliser la fonction optimisée du hook pour calculer les colis traités
+      const packagesProgress = getPackagesProgress(today);
+      console.log('📦 Progression des colis calculée:', packagesProgress);
+      
+      const todayTasks = tasks.filter(t => t.date === today);
       const completedTasks = todayTasks.filter(t => t.is_completed);
       const pendingTasks = todayTasks.filter(t => !t.is_completed);
       
@@ -75,45 +88,34 @@ export default function ManagerHomeTab() {
         pendingTasks: pendingTasks.length
       });
       
-      // Calculer les colis traités (estimation basée sur le temps)
-      let treatedPackages = 0;
-      
-      // Colis des tâches terminées
-      treatedPackages += completedTasks.reduce((sum, t) => sum + (t.packages || 0), 0);
-      
-      // Estimation pour les tâches en cours
-      const currentTime = new Date();
-      todayTasks.filter(t => !t.is_completed).forEach((task) => {
-        const start = new Date(`${task.date}T${task.start_time}`);
-        const end = new Date(`${task.date}T${task.end_time}`);
-        
-        if (currentTime >= start && currentTime < end) {
-          // Tâche en cours - calculer le pourcentage de temps écoulé
-          const totalDuration = end.getTime() - start.getTime();
-          const elapsedTime = currentTime.getTime() - start.getTime();
-          const progressPercentage = Math.min(100, Math.max(0, (elapsedTime / totalDuration) * 100));
-          
-          const estimatedPackages = Math.floor((task.packages || 0) * (progressPercentage / 100));
-          treatedPackages += estimatedPackages;
-          
-          console.log(`📦 Tâche en cours ${task.title}: ${progressPercentage.toFixed(1)}% => ${estimatedPackages}/${task.packages} colis`);
-        }
-      });
-      
       // Calculer les membres d'équipe actifs (uniquement tâches en cours)
       const activeTeamMembers = pendingTasks.reduce((sum, t) => sum + (t.team_size || 0), 0);
       
-      // Calculer le temps restant
+      // Calculer le temps restant avec les données Supabase
+      const currentTime = new Date();
       let totalMinutes = 0;
+      
+      console.log('⏰ Calcul du temps restant - Tâches en attente:', pendingTasks.length);
+      
       pendingTasks.forEach((t) => {
         const start = new Date(`${t.date}T${t.start_time}`);
         const end = new Date(`${t.date}T${t.end_time}`);
+        
+        console.log(`📋 Tâche: ${t.title} (${t.start_time} - ${t.end_time})`);
+        
         if (currentTime < start) {
-          // Tâche future
-          totalMinutes += Math.max(0, (end.getTime() - start.getTime()) / 60000);
+          // Tâche future : temps total de la tâche
+          const taskDuration = Math.max(0, (end.getTime() - start.getTime()) / 60000);
+          totalMinutes += taskDuration;
+          console.log(`⏳ Tâche future: ${taskDuration.toFixed(0)} minutes ajoutées`);
         } else if (currentTime >= start && currentTime < end) {
-          // Tâche en cours
-          totalMinutes += Math.max(0, (end.getTime() - currentTime.getTime()) / 60000);
+          // Tâche en cours : temps restant jusqu'à la fin
+          const remainingTaskTime = Math.max(0, (end.getTime() - currentTime.getTime()) / 60000);
+          totalMinutes += remainingTaskTime;
+          console.log(`🔄 Tâche en cours: ${remainingTaskTime.toFixed(0)} minutes restantes`);
+        } else {
+          // Tâche terminée ou en retard : ne pas compter
+          console.log(`✅ Tâche terminée/en retard: 0 minute`);
         }
       });
       
@@ -121,48 +123,54 @@ export default function ManagerHomeTab() {
       const mins = Math.round(totalMinutes % 60);
       const remainingTime = `${hours}h${mins.toString().padStart(2, '0')}`;
       
+      console.log(`⏰ Temps restant calculé: ${totalMinutes.toFixed(0)} minutes = ${remainingTime}`);
+      
       const totalTasks = todayTasks.length;
       const performance = totalTasks > 0 ? Math.round((completedTasks.length / totalTasks) * 100) : 0;
       
-      // Calculer le total de colis de la journée
-      const totalPackagesForDay = todayTasks.reduce((sum, t) => sum + (t.packages || 0), 0);
-      const packageProgress = totalPackagesForDay > 0 ? Math.round((treatedPackages / totalPackagesForDay) * 100) : 0;
+      // Calculer le pourcentage de temps restant par rapport à une journée de travail typique (8h = 480 minutes)
+      const typicalWorkDayMinutes = 8 * 60; // 8 heures
+      const remainingTimePercentage = Math.min(100, Math.max(0, (totalMinutes / typicalWorkDayMinutes) * 100));
       
       const newStats = {
-        treatedPackages,
+        treatedPackages: packagesProgress.treatedPackages,
         activeTeamMembers,
         remainingTime,
+        remainingTimePercentage: Math.round(remainingTimePercentage),
         performance,
         treatedTasks: completedTasks.length,
         totalTasks,
-        totalPackagesForDay,
-        packageProgress,
+        totalPackagesForDay: packagesProgress.totalPackages,
+        packageProgress: packagesProgress.progressPercentage,
       };
       
       console.log('📊 Nouvelles stats calculées:', newStats);
+      console.log(`📦 Colis traités: ${packagesProgress.treatedPackages}/${packagesProgress.totalPackages} (${packagesProgress.progressPercentage}%)`);
       setStats(newStats);
     } catch (e) {
       console.error('Erreur calcul stats:', e);
-      setStats({
-        treatedPackages: 0,
-        activeTeamMembers: 0,
-        remainingTime: '0h00',
-        performance: 0,
-        treatedTasks: 0,
-        totalTasks: 0,
-        totalPackagesForDay: 0,
-        packageProgress: 0,
-      });
+              setStats({
+          treatedPackages: 0,
+          activeTeamMembers: 0,
+          remainingTime: '0h00',
+          remainingTimePercentage: 0,
+          performance: 0,
+          treatedTasks: 0,
+          totalTasks: 0,
+          totalPackagesForDay: 0,
+          packageProgress: 0,
+        });
     } finally {
       setLoadingStats(false);
     }
-  }, [getTasksByDate, today]);
+  }, [today, tasks, getPackagesProgress]);
 
   useEffect(() => {
+    console.log('🔄 [INDEX] useEffect tasks/tasksLoading changé:', { tasksLoading, tasksCount: tasks?.length });
     if (!tasksLoading) {
       calculateStats();
     }
-  }, [tasksLoading, calculateStats, tasks]); // Ajouter 'tasks' pour recalculer quand les tâches changent
+  }, [tasksLoading, tasks]); // Retirer calculateStats des dépendances
   
   // Écouter les rafraîchissements globaux pour mettre à jour les stats
   useEffect(() => {
@@ -170,7 +178,7 @@ export default function ManagerHomeTab() {
       console.log('🔄 Rafraîchissement global détecté, recalcul des stats...');
       calculateStats();
     }
-  }, [refreshTrigger, calculateStats]);
+  }, [refreshTrigger]); // Retirer calculateStats des dépendances
   
   // Rafraîchissement automatique des statistiques toutes les 30 secondes
   useEffect(() => {
@@ -180,7 +188,7 @@ export default function ManagerHomeTab() {
     }, 30000); // 30 secondes
     
     return () => clearInterval(interval);
-  }, [calculateStats]);
+  }, []); // Retirer calculateStats des dépendances
 
   const todayTasks = [
     {
@@ -215,7 +223,13 @@ export default function ManagerHomeTab() {
   };
 
   const navigateToEfficiency = () => {
-    router.push('/(manager-tabs)/efficiency');
+    Alert.alert(
+      '🚧 Fonctionnalité en développement',
+      'La page Performance est actuellement en cours de développement.',
+      [
+        { text: 'OK', onPress: () => router.push('/(manager-tabs)/efficiency') }
+      ]
+    );
   };
 
   const navigateToTeam = () => {
@@ -261,6 +275,16 @@ export default function ManagerHomeTab() {
     }
   };
 
+  // Fonction de déconnexion
+  const handleLogout = async () => {
+    const result = await logout();
+    if (result.success) {
+      router.replace('/login?userType=manager');
+    } else {
+      Alert.alert('Erreur', 'La déconnexion a échoué');
+    }
+  };
+
   return (
     <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
@@ -291,8 +315,11 @@ export default function ManagerHomeTab() {
         <View style={styles.statsContainer}>
           <TouchableOpacity style={[styles.statCard, isDark && styles.statCardDark]}>
             <View style={[styles.statIcon, { backgroundColor: '#3b82f620' }]}> <Package color="#3b82f6" size={20} strokeWidth={2} /> </View>
-            <Text style={styles.statValue}>{loadingStats ? '...' : stats.treatedPackages || 0}</Text>
+            <Text style={styles.statValue}>{loadingStats ? '...' : `${stats.treatedPackages || 0}/${stats.totalPackagesForDay || 0}`}</Text>
             <Text style={styles.statLabel}>Colis traités</Text>
+            <Text style={[styles.statSubtitle, isDark && styles.statSubtitleDark]}>
+              {loadingStats ? '...' : `${stats.packageProgress || 0}% de la journée`}
+            </Text>
             <View style={styles.progressContainer}>
               <View style={styles.progressBar}>
                 <View style={[styles.progressFill, { width: `${stats.packageProgress || 0}%`, backgroundColor: '#3b82f6' }]} />
@@ -317,9 +344,9 @@ export default function ManagerHomeTab() {
             <Text style={[styles.statLabel, isDark && styles.statLabelDark]}>Temps restant</Text>
             <View style={styles.progressContainer}>
               <View style={styles.progressBar}>
-                <View style={[styles.progressFill, { width: stats.totalTasks > 0 ? `${100 - stats.performance}%` : '0%', backgroundColor: '#f59e0b' }]} />
+                <View style={[styles.progressFill, { width: `${stats.remainingTimePercentage || 0}%`, backgroundColor: '#f59e0b' }]} />
               </View>
-              <Text style={styles.progressText}>{stats.totalTasks > 0 ? 100 - stats.performance : 0}%</Text>
+              <Text style={styles.progressText}>{stats.remainingTimePercentage || 0}%</Text>
             </View>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.statCard, isDark && styles.statCardDark]}>
@@ -352,7 +379,11 @@ export default function ManagerHomeTab() {
             tasks.map((task) => (
             <View key={task.id} style={[styles.taskCard, isDark && styles.taskCardDark]}>
               <View style={styles.taskHeader}>
-                <Text style={[styles.taskTitle, isDark && styles.taskTitleDark]}>{task.title}</Text>
+                <Text style={[styles.taskTitle, isDark && styles.taskTitleDark]}>{task.title}
+                  {task.recurring_event_id && (
+                    <Text style={{ color: '#8b5cf6', fontSize: 12, marginLeft: 8 }}>  • Récurrent</Text>
+                  )}
+                </Text>
                 <View style={styles.taskStatus}>
                     {task.is_completed ? <CheckCircle color="#10b981" size={20} strokeWidth={2} /> : <Clock color="#6b7280" size={20} strokeWidth={2} />}
                   </View>
@@ -471,6 +502,8 @@ export default function ManagerHomeTab() {
             </LinearGradient>
           </TouchableOpacity>
 
+          {/* Suppression du bouton Événements récurrents */}
+          {/*
           <TouchableOpacity style={styles.actionCard} onPress={() => router.push('/(manager-tabs)/recurring-events')}>
             <LinearGradient
               colors={['#ec4899', '#be185d']}
@@ -485,6 +518,7 @@ export default function ManagerHomeTab() {
               </View>
             </LinearGradient>
           </TouchableOpacity>
+          */}
         </View>
 
         {/* Alerts */}
@@ -574,6 +608,14 @@ export default function ManagerHomeTab() {
           </View>
         </View>
       </Modal>
+      {/* Bouton de déconnexion flottant en bas à droite */}
+      <TouchableOpacity
+        onPress={handleLogout}
+        style={styles.logoutButton}
+        activeOpacity={0.7}
+      >
+        <LogOut color="#ffffff" size={24} strokeWidth={2} />
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -597,70 +639,92 @@ const styles = StyleSheet.create({
     paddingTop: 80,
     paddingBottom: 32,
   },
+  headerDark: {
+    borderBottomColor: '#374151',
+  },
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#1a1a1a',
+  },
+  headerTitleDark: {
+    color: '#f4f4f5',
+  },
+  logoutButton: {
+    position: 'absolute',
+    bottom: 30,
+    right: 30,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#ef4444',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  logoutButtonLight: {
+    backgroundColor: '#fef2f2', // rouge très clair
+  },
+  logoutButtonDark: {
+    backgroundColor: '#7f1d1d', // rouge foncé
+    borderWidth: 1,
+    borderColor: '#dc2626',
+  },
   headerContent: {
     flex: 1,
+    marginLeft: 16,
   },
   greeting: {
     fontSize: 16,
     color: '#6b7280',
-    fontWeight: '400',
+    marginBottom: 4,
   },
   greetingDark: {
     color: '#a1a1aa',
   },
   userName: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '700',
-    color: '#1a1a1a',
-    marginTop: 4,
-    marginBottom: 8,
+    color: '#111827',
+    marginBottom: 4,
   },
   userNameDark: {
-    color: '#ffffff',
+    color: '#f4f4f5',
   },
   date: {
     fontSize: 14,
-    color: '#9ca3af',
-    fontWeight: '500',
+    color: '#6b7280',
   },
   dateDark: {
-    color: '#71717a',
+    color: '#a1a1aa',
   },
   notificationButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#ffffff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 3,
     position: 'relative',
+    padding: 8,
   },
   notificationButtonDark: {
-    backgroundColor: '#27272a',
+    // Styles pour le mode sombre si nécessaire
   },
   notificationBadge: {
     position: 'absolute',
-    top: -4,
-    right: -4,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    top: 4,
+    right: 4,
     backgroundColor: '#ef4444',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
     justifyContent: 'center',
     alignItems: 'center',
   },
   notificationBadgeText: {
+    color: '#ffffff',
     fontSize: 12,
     fontWeight: '600',
-    color: '#ffffff',
   },
   statsContainer: {
     flexDirection: 'row',
@@ -668,9 +732,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     gap: 12,
     marginBottom: 32,
+    justifyContent: 'space-between',
   },
   statCard: {
-    flex: 1,
+    width: '48%', // Pour créer une grille 2x2
     borderRadius: 12,
     padding: 16,
     backgroundColor: '#ffffff',
@@ -682,6 +747,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 4,
     elevation: 3,
+    marginBottom: 12, // Espacement vertical entre les lignes
   },
   statCardDark: {
     backgroundColor: '#27272a',
@@ -1048,6 +1114,16 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   taskDetailTextDark: {
+    color: '#a1a1aa',
+  },
+  statSubtitle: {
+    fontSize: 12,
+    color: '#6b7280',
+    fontWeight: '500',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  statSubtitleDark: {
     color: '#a1a1aa',
   },
 });

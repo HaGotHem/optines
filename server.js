@@ -557,6 +557,233 @@ app.delete('/api/employees/:id', async (req, res) => {
   }
 });
 
+// =====================================================
+// ROUTES POUR LES PAUSES DES EMPLOYÉS
+// =====================================================
+
+// Créer une pause pour un employé
+app.post('/api/employees/:id/breaks', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { 
+      start_time, 
+      end_time, 
+      date, 
+      break_type = 'pause',
+      description,
+      is_recurring = false,
+      recurrence_pattern = {}
+    } = req.body;
+
+    if (!start_time || !end_time || !date) {
+      return res.status(400).json({ 
+        error: 'Les champs start_time, end_time et date sont requis' 
+      });
+    }
+
+    // Vérifier que l'employé existe
+    const { data: employee, error: employeeError } = await supabase
+      .from('team_members')
+      .select('id')
+      .eq('id', id)
+      .single();
+
+    if (employeeError || !employee) {
+      return res.status(400).json({ error: 'L\'employé spécifié n\'existe pas' });
+    }
+
+    // Vérifier que l'heure de fin est après l'heure de début
+    if (start_time >= end_time) {
+      return res.status(400).json({ error: 'L\'heure de fin doit être après l\'heure de début' });
+    }
+
+    const { data, error } = await supabase
+      .from('employee_breaks')
+      .insert([{ 
+        employee_id: id,
+        start_time, 
+        end_time, 
+        date, 
+        break_type,
+        description,
+        is_recurring,
+        recurrence_pattern
+      }])
+      .select()
+      .single();
+
+    if (error) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    res.json({ success: true, break: data });
+
+  } catch (error) {
+    console.error('Erreur création pause:', error);
+    res.status(500).json({ error: 'Erreur interne du serveur' });
+  }
+});
+
+// Lister les pauses d'un employé
+app.get('/api/employees/:id/breaks', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { date, start_date, end_date } = req.query;
+
+    // Vérifier que l'employé existe
+    const { data: employee, error: employeeError } = await supabase
+      .from('team_members')
+      .select('id')
+      .eq('id', id)
+      .single();
+
+    if (employeeError || !employee) {
+      return res.status(400).json({ error: 'L\'employé spécifié n\'existe pas' });
+    }
+
+    let query = supabase
+      .from('employee_breaks_with_duration')
+      .select('*')
+      .eq('employee_id', id)
+      .eq('is_active', true)
+      .order('date', { ascending: true })
+      .order('start_time', { ascending: true });
+
+    // Filtrer par date spécifique
+    if (date) {
+      query = query.eq('date', date);
+    }
+
+    // Filtrer par plage de dates
+    if (start_date && end_date) {
+      query = query.gte('date', start_date).lte('date', end_date);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    res.json({ success: true, breaks: data || [] });
+
+  } catch (error) {
+    console.error('Erreur récupération pauses:', error);
+    res.status(500).json({ error: 'Erreur interne du serveur' });
+  }
+});
+
+// Modifier une pause
+app.put('/api/breaks/:breakId', async (req, res) => {
+  try {
+    const { breakId } = req.params;
+    const updates = req.body;
+
+    // Vérifier que la pause existe
+    const { data: existingBreak, error: breakError } = await supabase
+      .from('employee_breaks')
+      .select('*')
+      .eq('id', breakId)
+      .single();
+
+    if (breakError || !existingBreak) {
+      return res.status(400).json({ error: 'La pause spécifiée n\'existe pas' });
+    }
+
+    // Vérifier que l'heure de fin est après l'heure de début si les deux sont fournies
+    if (updates.start_time && updates.end_time && updates.start_time >= updates.end_time) {
+      return res.status(400).json({ error: 'L\'heure de fin doit être après l\'heure de début' });
+    }
+
+    const { data, error } = await supabase
+      .from('employee_breaks')
+      .update(updates)
+      .eq('id', breakId)
+      .select()
+      .single();
+
+    if (error) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    res.json({ success: true, break: data });
+
+  } catch (error) {
+    console.error('Erreur modification pause:', error);
+    res.status(500).json({ error: 'Erreur interne du serveur' });
+  }
+});
+
+// Supprimer une pause
+app.delete('/api/breaks/:breakId', async (req, res) => {
+  try {
+    const { breakId } = req.params;
+
+    // Vérifier que la pause existe
+    const { data: existingBreak, error: breakError } = await supabase
+      .from('employee_breaks')
+      .select('id')
+      .eq('id', breakId)
+      .single();
+
+    if (breakError || !existingBreak) {
+      return res.status(400).json({ error: 'La pause spécifiée n\'existe pas' });
+    }
+
+    const { error } = await supabase
+      .from('employee_breaks')
+      .delete()
+      .eq('id', breakId);
+
+    if (error) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    res.json({ success: true, message: 'Pause supprimée avec succès' });
+
+  } catch (error) {
+    console.error('Erreur suppression pause:', error);
+    res.status(500).json({ error: 'Erreur interne du serveur' });
+  }
+});
+
+// Récupérer toutes les pauses pour une date donnée (pour le planning)
+app.get('/api/breaks/date/:date', async (req, res) => {
+  try {
+    const { date } = req.params;
+    const { manager_id, section } = req.query;
+
+    let query = supabase
+      .from('employee_breaks_with_duration')
+      .select('*')
+      .eq('date', date)
+      .eq('is_active', true)
+      .order('start_time', { ascending: true });
+
+    // Filtrer par manager si spécifié
+    if (manager_id) {
+      query = query.eq('employee_section', manager_id);
+    }
+
+    // Filtrer par section si spécifiée
+    if (section) {
+      query = query.eq('employee_section', section);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    res.json({ success: true, breaks: data || [] });
+
+  } catch (error) {
+    console.error('Erreur récupération pauses par date:', error);
+    res.status(500).json({ error: 'Erreur interne du serveur' });
+  }
+});
+
 // Démarrage du serveur
 app.listen(PORT, () => {
   console.log(`🚀 Serveur API démarré sur http://localhost:${PORT}`);
@@ -575,6 +802,11 @@ app.listen(PORT, () => {
   console.log(`   GET  /api/employees`);
   console.log(`   PUT  /api/employees/:id`);
   console.log(`   DELETE /api/employees/:id`);
+  console.log(`   POST /api/employees/:id/breaks`);
+  console.log(`   GET  /api/employees/:id/breaks`);
+  console.log(`   PUT  /api/breaks/:breakId`);
+  console.log(`   DELETE /api/breaks/:breakId`);
+  console.log(`   GET  /api/breaks/date/:date`);
 });
 
 module.exports = app; 

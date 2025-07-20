@@ -81,6 +81,8 @@ export default function ManagerTabLayout() {
         <Tabs.Screen name="efficiency" />
         <Tabs.Screen name="settings" />
         <Tabs.Screen name="recurring-events" />
+        <Tabs.Screen name="employee-schedule" />
+        <Tabs.Screen name="rayon-planning" />
       </Tabs>
       
       {/* Retire le console.log qui cause l'erreur TypeScript */}

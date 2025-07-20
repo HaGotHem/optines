@@ -126,8 +126,21 @@ export class NotificationService {
         totalTeamMembers += task.teamSize || 1;
 
         // Analyser la charge par heure
-        const startHour = parseInt(task.startTime.split(':')[0]);
-        const endHour = parseInt(task.endTime.split(':')[0]);
+        const startTime = task.startTime || task.start_time;
+        const endTime = task.endTime || task.end_time;
+        
+        if (!startTime || !endTime) {
+          console.warn('Missing start or end time for task:', task);
+          continue;
+        }
+
+        const startHour = parseInt(startTime.split(':')[0]);
+        const endHour = parseInt(endTime.split(':')[0]);
+        
+        if (isNaN(startHour) || isNaN(endHour)) {
+          console.warn('Invalid time format for task:', task);
+          continue;
+        }
         
         for (let hour = startHour; hour < endHour; hour++) {
           const hourKey = hour.toString().padStart(2, '0');
@@ -168,78 +181,123 @@ export class NotificationService {
   async generateSmartReminders(task: any): Promise<SmartReminder[]> {
     const reminders: SmartReminder[] = [];
     const taskDate = task.date;
-    const taskStartTime = task.startTime;
-    const taskEndTime = task.endTime;
+    const taskStartTime = task.startTime || task.start_time;
+    const taskEndTime = task.endTime || task.end_time;
+
+    // Vérifier que les données nécessaires sont disponibles
+    if (!taskStartTime || !taskDate || !task.id || !task.title) {
+      console.warn('Données de tâche incomplètes pour générer des rappels:', task);
+      return reminders;
+    }
 
     // Analyser la charge de travail
     const workload = await this.analyzeTeamWorkload(taskDate);
 
     // 1. Rappel de début de tâche (15 minutes avant)
     const startReminderTime = this.subtractMinutes(taskStartTime, 15);
-    reminders.push({
-      id: `start_${task.id}`,
-      taskId: task.id,
-      taskTitle: task.title,
-      reminderTime: startReminderTime,
-      reminderDate: taskDate,
-      type: 'start',
-      message: `🚀 Début de la réception de colis à ${taskStartTime} - ${task.packages} colis à traiter`,
-      isEnabled: true
-    });
+    if (startReminderTime) {
+      reminders.push({
+        id: `start_${task.id}`,
+        taskId: task.id,
+        taskTitle: task.title,
+        reminderTime: startReminderTime,
+        reminderDate: taskDate,
+        type: 'start',
+        message: `🚀 Début de la réception de colis à ${taskStartTime} - ${task.packages || 0} colis à traiter`,
+        isEnabled: true
+      });
+    }
 
     // 2. Rappel de préparation (30 minutes avant)
     const prepReminderTime = this.subtractMinutes(taskStartTime, 30);
-    reminders.push({
-      id: `prep_${task.id}`,
-      taskId: task.id,
-      taskTitle: task.title,
-      reminderTime: prepReminderTime,
-      reminderDate: taskDate,
-      type: 'preparation',
-      message: `⚡ Préparation pour la réception de colis à ${taskStartTime} - Vérifiez l'équipement`,
-      isEnabled: true
-    });
+    if (prepReminderTime) {
+      reminders.push({
+        id: `prep_${task.id}`,
+        taskId: task.id,
+        taskTitle: task.title,
+        reminderTime: prepReminderTime,
+        reminderDate: taskDate,
+        type: 'preparation',
+        message: `⚡ Préparation pour la réception de colis à ${taskStartTime} - Vérifiez l'équipement`,
+        isEnabled: true
+      });
+    }
 
     // 3. Rappel d'équipe prête (45 minutes avant)
     const teamReminderTime = this.subtractMinutes(taskStartTime, 45);
-    reminders.push({
-      id: `team_${task.id}`,
-      taskId: task.id,
-      taskTitle: task.title,
-      reminderTime: teamReminderTime,
-      reminderDate: taskDate,
-      type: 'team_ready',
-      message: `👥 Équipe requise pour la réception de colis à ${taskStartTime} - ${task.teamSize} personne(s)`,
-      isEnabled: true
-    });
+    if (teamReminderTime) {
+      reminders.push({
+        id: `team_${task.id}`,
+        taskId: task.id,
+        taskTitle: task.title,
+        reminderTime: teamReminderTime,
+        reminderDate: taskDate,
+        type: 'team_ready',
+        message: `👥 Équipe requise pour la réception de colis à ${taskStartTime} - ${task.teamSize || task.team_size || 1} personne(s)`,
+        isEnabled: true
+      });
+    }
 
     // 4. Alerte d'efficacité si charge élevée
     if (workload.averageLoadPerPerson > 60) {
       const efficiencyReminderTime = this.subtractMinutes(taskStartTime, 60);
-      reminders.push({
-        id: `efficiency_${task.id}`,
-        taskId: task.id,
-        taskTitle: task.title,
-        reminderTime: efficiencyReminderTime,
-        reminderDate: taskDate,
-        type: 'efficiency_alert',
-        message: `⚠️ Charge élevée détectée: ${Math.round(workload.averageLoadPerPerson)} colis/personne. Considérez augmenter l'équipe.`,
-        isEnabled: true,
-        teamLoadPercentage: Math.round(workload.averageLoadPerPerson),
-        suggestedTeamSize: workload.suggestedTeamSize
-      });
+      if (efficiencyReminderTime) {
+        reminders.push({
+          id: `efficiency_${task.id}`,
+          taskId: task.id,
+          taskTitle: task.title,
+          reminderTime: efficiencyReminderTime,
+          reminderDate: taskDate,
+          type: 'efficiency_alert',
+          message: `⚠️ Charge élevée détectée: ${Math.round(workload.averageLoadPerPerson)} colis/personne. Considérez augmenter l'équipe.`,
+          isEnabled: true,
+          teamLoadPercentage: Math.round(workload.averageLoadPerPerson),
+          suggestedTeamSize: workload.suggestedTeamSize
+        });
+      }
     }
 
     return reminders;
   }
 
   // Soustraire des minutes d'une heure
-  private subtractMinutes(time: string, minutes: number): string {
-    const [hours, mins] = time.split(':').map(Number);
-    const totalMinutes = hours * 60 + mins - minutes;
-    const newHours = Math.floor(totalMinutes / 60);
-    const newMins = totalMinutes % 60;
-    return `${newHours.toString().padStart(2, '0')}:${newMins.toString().padStart(2, '0')}`;
+  private subtractMinutes(time: string | undefined | null, minutes: number): string | null {
+    // Vérifier que time est défini et valide
+    if (!time || typeof time !== 'string') {
+      console.warn('Time is undefined or invalid:', time);
+      return null;
+    }
+
+    // Vérifier que le format est correct (HH:MM)
+    if (!time.includes(':')) {
+      console.warn('Invalid time format, expected HH:MM:', time);
+      return null;
+    }
+
+    try {
+      const [hours, mins] = time.split(':').map(Number);
+      
+      // Vérifier que les valeurs sont des nombres valides
+      if (isNaN(hours) || isNaN(mins)) {
+        console.warn('Invalid time values:', time);
+        return null;
+      }
+
+      const totalMinutes = hours * 60 + mins - minutes;
+      
+      // Vérifier que le résultat n'est pas négatif
+      if (totalMinutes < 0) {
+        console.warn('Result would be negative:', totalMinutes);
+        return null;
+      }
+
+      const newHours = Math.floor(totalMinutes / 60);
+      const newMins = totalMinutes % 60;
+      return `${newHours.toString().padStart(2, '0')}:${newMins.toString().padStart(2, '0')}`;
+    } catch (error) {
+      console.error('Error in subtractMinutes:', error, 'for time:', time);
+      return null;
+    }
   }
 
   // Sauvegarder les rappels intelligents
@@ -365,12 +423,29 @@ export class NotificationService {
       const now = new Date();
 
       for (const task of existingTasks) {
-        const taskDate = new Date(task.date + 'T' + task.startTime);
+        const startTime = task.startTime || task.start_time;
         
-        // Ne programmer que pour les tâches futures
-        if (taskDate > now) {
-          await this.scheduleTaskReminder(task);
-          await this.scheduleSmartReminders(task);
+        if (!task.date || !startTime) {
+          console.warn('Missing required task data for scheduling:', task);
+          continue;
+        }
+
+        try {
+          const taskDate = new Date(task.date + 'T' + startTime);
+          
+          // Vérifier que la date est valide
+          if (isNaN(taskDate.getTime())) {
+            console.warn('Invalid date format for task:', task);
+            continue;
+          }
+          
+          // Ne programmer que pour les tâches futures
+          if (taskDate > now) {
+            await this.scheduleTaskReminder(task);
+            await this.scheduleSmartReminders(task);
+          }
+        } catch (error) {
+          console.error('Error processing task for scheduling:', error, task);
         }
       }
     } catch (error) {
@@ -407,12 +482,30 @@ export class NotificationService {
       const now = new Date();
 
       for (const task of existingTasks) {
-        const taskDate = new Date(task.date + 'T' + task.startTime);
-        const taskEndDate = new Date(task.date + 'T' + task.endTime);
+        const startTime = task.startTime || task.start_time;
+        const endTime = task.endTime || task.end_time;
         
-        // Si la tâche devrait être en cours mais n'est pas terminée
-        if (taskDate <= now && taskEndDate > now && !task.completed) {
-          await this.notifyTaskOverdue(task);
+        if (!task.date || !startTime || !endTime) {
+          console.warn('Missing required task data:', task);
+          continue;
+        }
+
+        try {
+          const taskDate = new Date(task.date + 'T' + startTime);
+          const taskEndDate = new Date(task.date + 'T' + endTime);
+          
+          // Vérifier que les dates sont valides
+          if (isNaN(taskDate.getTime()) || isNaN(taskEndDate.getTime())) {
+            console.warn('Invalid date format for task:', task);
+            continue;
+          }
+          
+          // Si la tâche devrait être en cours mais n'est pas terminée
+          if (taskDate <= now && taskEndDate > now && !task.completed) {
+            await this.notifyTaskOverdue(task);
+          }
+        } catch (error) {
+          console.error('Error processing task for overdue check:', error, task);
         }
       }
     } catch (error) {

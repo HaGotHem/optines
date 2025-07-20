@@ -117,8 +117,8 @@ export default function ManagerSettings() {
         <Text style={styles.profileHint}>Appuyez pour changer</Text>
       </View>
 
-      {/* Thème */}
-      <View style={styles.section}>
+      {/* Thème - Temporairement masqué */}
+      {/* <View style={styles.section}>
         <Text style={styles.sectionTitle}>Apparence</Text>
         <View style={styles.themeRow}>
           <Text style={[styles.themeLabel, isDark && styles.darkText]}>Mode sombre</Text>
@@ -132,7 +132,7 @@ export default function ManagerSettings() {
             {theme === 'auto' ? '✓ Défaut : suivre la préférence de l\'appareil' : 'Défaut : suivre la préférence de l\'appareil'}
           </Text>
         </TouchableOpacity>
-      </View>
+      </View> */}
 
       {/* Changement de mot de passe */}
       <View style={styles.section}>

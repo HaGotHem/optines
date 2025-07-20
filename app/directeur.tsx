@@ -8,6 +8,8 @@ import {
   TouchableOpacity,
   Dimensions,
   Modal,
+  TextInput,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ChartBar as BarChart3, Users, TrendingUp, TriangleAlert as AlertTriangle, CircleCheck as CheckCircle, Clock, Target, Bell, X, Package, Timer, LogOut, Settings } from 'lucide-react-native';
@@ -15,6 +17,10 @@ import { router } from 'expo-router';
 import { PerformanceService } from '../services/PerformanceService';
 import { useSupabaseTasks } from '../hooks/useSupabaseTasks';
 import { useSupabaseUsers } from '../hooks/useSupabaseUsers';
+import { useSupabaseAlerts } from '../hooks/useSupabaseAlerts';
+import { useSupabaseWorkingHours } from '../hooks/useSupabaseWorkingHours';
+import { supabase } from '../lib/supabase';
+import PerformanceChart from '../components/PerformanceChart';
 
 const { width } = Dimensions.get('window');
 
@@ -34,9 +40,81 @@ export default function DirecteurDashboard() {
   const [globalStats, setGlobalStats] = useState<any>({});
   const [isLoading, setIsLoading] = useState(true);
 
+  // États pour la configuration des horaires
+  const [showWorkingHoursModal, setShowWorkingHoursModal] = useState(false);
+  const [workingHours, setWorkingHours] = useState({ start: '06:00', end: '21:00' });
+  const [tempWorkingHours, setTempWorkingHours] = useState({ start: '06:00', end: '21:00' });
+  const [isSavingHours, setIsSavingHours] = useState(false);
+  
+  // États pour les time pickers
+  const [showStartTimePicker, setShowStartTimePicker] = useState(false);
+  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
+  const [tempStartHour, setTempStartHour] = useState('06');
+  const [tempStartMinute, setTempStartMinute] = useState('00');
+  const [tempEndHour, setTempEndHour] = useState('21');
+  const [tempEndMinute, setTempEndMinute] = useState('00');
+
   // Hooks pour récupérer les données
   const { tasks: allTasks, isLoading: tasksLoading } = useSupabaseTasks({});
   const { users: allUsers, isLoading: usersLoading } = useSupabaseUsers();
+  const { alerts: realAlerts, isLoading: alertsLoading, markAlertAsRead } = useSupabaseAlerts({ store_id: 1 });
+  const { 
+    workingHours: storeWorkingHours, 
+    isLoading: workingHoursLoading, 
+    updateWorkingHours,
+    loadWorkingHours
+  } = useSupabaseWorkingHours();
+
+  // Charger les horaires de travail
+  useEffect(() => {
+    if (storeWorkingHours) {
+      console.log('🔄 Mise à jour des horaires depuis la base:', storeWorkingHours);
+      const newWorkingHours = { start: storeWorkingHours.start_time, end: storeWorkingHours.end_time };
+      setWorkingHours(newWorkingHours);
+      setTempWorkingHours(newWorkingHours);
+      console.log('✅ Horaires mis à jour dans l\'interface:', newWorkingHours);
+    }
+  }, [storeWorkingHours]);
+
+  const saveWorkingHours = async () => {
+    if (isSavingHours) return; // Éviter les clics multiples
+    
+    try {
+      setIsSavingHours(true);
+      console.log('🔄 Sauvegarde des horaires en cours...');
+      console.log('Horaires à sauvegarder:', tempWorkingHours);
+      
+      const result = await updateWorkingHours(tempWorkingHours.start, tempWorkingHours.end);
+      
+      if (result) {
+        console.log('✅ Résultat de la sauvegarde:', result);
+        // Forcer le rechargement des horaires pour s'assurer de la synchronisation
+        await loadWorkingHours();
+        setShowWorkingHoursModal(false);
+        console.log('✅ Horaires de travail mis à jour avec succès');
+        
+        // Afficher une alerte de succès
+        Alert.alert(
+          'Succès',
+          `Horaires mis à jour : ${tempWorkingHours.start} - ${tempWorkingHours.end}`,
+          [{ text: 'OK' }]
+        );
+      } else {
+        throw new Error('Aucun résultat retourné par updateWorkingHours');
+      }
+    } catch (error) {
+      console.error('❌ Erreur lors de la sauvegarde des horaires:', error);
+      
+      // Afficher une alerte d'erreur détaillée
+      Alert.alert(
+        'Erreur',
+        `Impossible de sauvegarder les horaires : ${error instanceof Error ? error.message : 'Erreur inconnue'}\n\nAssurez-vous que la table working_hours existe dans la base de données.`,
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setIsSavingHours(false);
+    }
+  };
 
   // Charger les données de performance
   useEffect(() => {
@@ -60,18 +138,18 @@ export default function DirecteurDashboard() {
           const managerTasks = allTasks.filter(task => {
             console.log(`🔍 Vérification tâche pour manager ${manager.full_name}:`, {
               taskManagerId: task.manager_id,
-              userManagerId: manager.app_metadata?.user_id?.toString(),
-              match: task.manager_id === manager.app_metadata?.user_id?.toString()
+              userManagerId: manager.id,
+              match: task.manager_id === manager.id
             });
-            return task.manager_id === manager.app_metadata?.user_id?.toString();
+            return task.manager_id === manager.id;
           });
           
           console.log(`📋 Tâches trouvées pour ${manager.full_name}:`, managerTasks.length);
           
-          // N'ajouter que les managers qui ont des tâches réelles
+          // Utiliser seulement les vraies données - pas de données simulées
           if (managerTasks.length > 0) {
             const performance = PerformanceService.calculateManagerPerformance(
-              manager.app_metadata?.user_id?.toString() || manager.id,
+              manager.id,
               manager.full_name || manager.username || 'Manager',
               manager.section || 'Section inconnue',
               managerTasks
@@ -80,13 +158,13 @@ export default function DirecteurDashboard() {
             console.log(`📊 Performance calculée pour ${manager.full_name}:`, performance);
             performanceData.push(performance);
           } else {
-            console.log(`⚠️ Manager ${manager.full_name} ignoré (aucune tâche réelle)`);
+            console.log(`⚠️ Manager ${manager.full_name} n'a pas de tâches - ignoré`);
           }
         });
 
         console.log('📊 Données de performance générées:', performanceData.length);
         
-        // Calculer les statistiques globales
+        // Calculer les statistiques globales seulement avec les vraies données
         const stats = PerformanceService.calculateGlobalStats(performanceData);
         
         setManagersPerformance(performanceData);
@@ -101,40 +179,15 @@ export default function DirecteurDashboard() {
     loadPerformanceData();
   }, [allTasks, allUsers, tasksLoading, usersLoading]);
 
-  const alerts = [
-    {
-      id: 1,
-      managerId: 2,
-      type: 'performance',
-      severity: 'warning',
-      message: 'Performance en baisse de 8% cette semaine - Boucherie',
-      timestamp: '2 heures'
-    },
-    {
-      id: 2,
-      managerId: 4,
-      type: 'packages',
-      severity: 'critical',
-      message: 'Charcuterie très en retard - seulement 187/400 colis traités',
-      timestamp: '30 minutes'
-    },
-    {
-      id: 3,
-      managerId: 4,
-      type: 'delay',
-      severity: 'critical',
-      message: 'Retard critique sur traitement Charcuterie - 2h53min restantes',
-      timestamp: '1 heure'
-    },
-    {
-      id: 4,
-      managerId: 8,
-      type: 'time',
-      severity: 'warning',
-      message: 'Surgelés - Temps de traitement serré: 1h04min restantes',
-      timestamp: '45 minutes'
-    }
-  ];
+  // Remplacer les alertes statiques par les vraies alertes
+  const alerts = realAlerts.map(alert => ({
+    id: parseInt(alert.id.replace(/-/g, '')),
+    managerId: parseInt(alert.manager_id),
+    type: 'delay',
+    severity: alert.severity,
+    message: alert.message,
+    timestamp: new Date(alert.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+  }));
 
   // Calculate remaining time for each manager
   const calculateRemainingTime = (manager: any) => {
@@ -201,35 +254,71 @@ export default function DirecteurDashboard() {
   const showAlert = (alert: Alert) => {
     setSelectedAlert(alert);
     setAlertModal(true);
+    // Marquer lalerte comme lue
+    if (alert.id) {
+      markAlertAsRead(alert.id.toString());
+    }
   };
 
   const handleLogout = () => {
     router.replace('/');
   };
 
-  // Simulate real-time alerts
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const criticalAlerts = alerts.filter(alert => alert.severity === 'critical');
-      if (criticalAlerts.length > 0 && Math.random() > 0.7) {
-        const randomAlert = criticalAlerts[Math.floor(Math.random() * criticalAlerts.length)];
-        showAlert(randomAlert);
-      }
-    }, 15000); // Check every 15 seconds
+  // Fonctions pour générer les heures et minutes
+  const generateAvailableHours = () => {
+    return Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
+  };
 
-    return () => clearInterval(interval);
-  }, []);
+  const generateAvailableMinutes = () => {
+    return Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0'));
+  };
+
+  // Fonctions pour ouvrir les time pickers
+  const openStartTimePicker = () => {
+    const [hour, minute] = tempWorkingHours.start.split(':');
+    setTempStartHour(hour);
+    setTempStartMinute(minute);
+    setShowStartTimePicker(true);
+  };
+
+  const openEndTimePicker = () => {
+    const [hour, minute] = tempWorkingHours.end.split(':');
+    setTempEndHour(hour);
+    setTempEndMinute(minute);
+    setShowEndTimePicker(true);
+  };
+
+  // Supprimer la simulation d'alertes en temps réel
+  // useEffect(() => {
+  //   const interval = setInterval(() => {
+  //     const criticalAlerts = alerts.filter(alert => alert.severity === 'critical');
+  //     if (criticalAlerts.length > 0 && Math.random() > 0.7) {
+  //       const randomAlert = criticalAlerts[Math.floor(Math.random() * criticalAlerts.length)];
+  //       showAlert(randomAlert);
+  //     }
+  //   }, 15000); // Check every 15 seconds
+
+  //   return () => clearInterval(interval);
+  // }, []);
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.scrollView} contentContainerStyle={{flexGrow:1}} showsVerticalScrollIndicator={false}>
+
+        
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerContent}>
-            <Text style={styles.title}>Dashboard Agroalimentaire</Text>
-            <Text style={styles.subtitle}>Supervision des rayons et équipes</Text>
+            <Text style={styles.title}>Tableau de bord</Text>
+            <Text style={styles.subtitle}>Vue d'ensemble</Text>
           </View>
           <View style={styles.headerActions}>
+            <TouchableOpacity 
+              style={styles.workingHoursButton}
+              onPress={() => setShowWorkingHoursModal(true)}
+            >
+              <Clock color="#f59e0b" size={24} strokeWidth={2} />
+            </TouchableOpacity>
             <TouchableOpacity 
               style={styles.userManagementButton}
               onPress={() => router.push('/user-management')}
@@ -241,6 +330,12 @@ export default function DirecteurDashboard() {
               onPress={() => router.push('/employee-management')}
             >
               <Users color="#10b981" size={24} strokeWidth={2} />
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.tasksButton}
+              onPress={() => router.push('/all-tasks')}
+            >
+              <Target color="#8b5cf6" size={24} strokeWidth={2} />
             </TouchableOpacity>
             <TouchableOpacity style={styles.alertButton}>
               <Bell color="#ef4444" size={24} strokeWidth={2} />
@@ -262,8 +357,13 @@ export default function DirecteurDashboard() {
           </View>
           <View style={styles.statCard}>
             <Package color="#10b981" size={24} strokeWidth={2} />
-            <Text style={styles.statValue}>{isLoading ? '...' : averagePackages}</Text>
-            <Text style={styles.statLabel}>Colis/jour</Text>
+            <Text style={styles.statValue}>{isLoading ? '...' : globalStats.processedPackages || 0}</Text>
+            <Text style={styles.statLabel}>Colis traités</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Package color="#8b5cf6" size={24} strokeWidth={2} />
+            <Text style={styles.statValue}>{isLoading ? '...' : globalStats.totalPackages || 0}</Text>
+            <Text style={styles.statLabel}>Total colis</Text>
           </View>
           <View style={styles.statCard}>
             <Timer color="#f59e0b" size={24} strokeWidth={2} />
@@ -280,7 +380,7 @@ export default function DirecteurDashboard() {
         {/* Critical Alerts */}
         {alerts.filter(alert => alert.severity === 'critical').length > 0 && (
           <View style={styles.criticalSection}>
-            <Text style={styles.criticalTitle}>🚨 Alertes Critiques</Text>
+            <Text style={styles.criticalTitle}>🚨 Alertes</Text>
             {alerts.filter(alert => alert.severity === 'critical').map((alert) => (
               <TouchableOpacity 
                 key={alert.id} 
@@ -402,9 +502,110 @@ export default function DirecteurDashboard() {
           )}
         </View>
 
-        {/* Performance Chart */}
+        {/* Tâches Planifiées par les Managers */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Tâches Planifiées par les Managers</Text>
+          <View style={styles.tasksContainer}>
+            {allTasks.length === 0 ? (
+              <View style={styles.emptyTasksState}>
+                <Target color="#9ca3af" size={48} strokeWidth={2} />
+                <Text style={styles.emptyTasksText}>Aucune tâche planifiée</Text>
+                <Text style={styles.emptyTasksSubtext}>Les managers n'ont pas encore créé de tâches</Text>
+              </View>
+            ) : (
+              allTasks
+                .filter(task => !task.is_completed)
+                .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                .slice(0, 10)
+                .map((task) => {
+                  const manager = allUsers.find(user => 
+                    user.id === task.manager_id
+                  );
+                  
+                  return (
+                    <View key={task.id} style={styles.taskCard}>
+                      <View style={styles.taskHeader}>
+                        <View style={styles.taskInfo}>
+                          <Text style={styles.taskTitle}>{task.title}</Text>
+                          <Text style={styles.taskManager}>
+                            {manager?.full_name || manager?.username || 'Manager inconnu'} - {task.manager_section}
+                          </Text>
+                        </View>
+                        <View style={[
+                          styles.taskStatus,
+                          { backgroundColor: task.is_pinned ? '#f59e0b' : '#3b82f6' }
+                        ]}>
+                          <Text style={styles.taskStatusText}>
+                            {task.is_pinned ? 'Épinglée' : 'Planifiée'}
+                          </Text>
+                        </View>
+                      </View>
+                      
+                      <View style={styles.taskDetails}>
+                        <View style={styles.taskDetailRow}>
+                          <Clock color="#6b7280" size={14} strokeWidth={2} />
+                          <Text style={styles.taskDetailText}>
+                            {new Date(task.date).toLocaleDateString('fr-FR')} • {task.start_time} - {task.end_time}
+                          </Text>
+                        </View>
+                        
+                        <View style={styles.taskDetailRow}>
+                          <Package color="#6b7280" size={14} strokeWidth={2} />
+                          <Text style={styles.taskDetailText}>
+                            {task.packages} colis • {task.team_size} équipiers
+                          </Text>
+                        </View>
+                        
+                        {task.palette_condition && (
+                          <View style={styles.taskDetailRow}>
+                            <AlertTriangle color="#f59e0b" size={14} strokeWidth={2} />
+                            <Text style={styles.taskDetailText}>Condition palette requise</Text>
+                          </View>
+                        )}
+                      </View>
+                      
+                      <View style={styles.taskProgress}>
+                        <View style={styles.progressBar}>
+                          <View 
+                            style={[
+                              styles.progressFill, 
+                              { 
+                                width: '0%',
+                                backgroundColor: '#3b82f6'
+                              }
+                            ]} 
+                          />
+                        </View>
+                        <Text style={styles.taskProgressText}>En attente de début</Text>
+                      </View>
+                    </View>
+                  );
+                })
+            )}
+            
+            {allTasks.filter(task => !task.is_completed).length > 10 && (
+              <TouchableOpacity 
+                style={styles.viewAllTasksButton}
+                onPress={() => router.push('/all-tasks')}
+              >
+                <Text style={styles.viewAllTasksText}>
+                  Voir toutes les tâches ({allTasks.filter(task => !task.is_completed).length})
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
+        {/* Évolution Globale */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Évolution Globale</Text>
+          
+          {/* Performance Chart intégré dans Évolution Globale */}
+          <PerformanceChart 
+            data={managersPerformance}
+            title="Traitement des colis - 30 derniers jours"
+          />
+          
           <View style={styles.chartContainer}>
             <LinearGradient
               colors={['#3b82f6', '#1d4ed8']}
@@ -433,6 +634,269 @@ export default function DirecteurDashboard() {
       >
         <LogOut color="#ffffff" size={24} strokeWidth={2} />
       </TouchableOpacity>
+
+      {/* Working Hours Configuration Modal */}
+      <Modal
+        visible={showWorkingHoursModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowWorkingHoursModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Clock color="#f59e0b" size={24} strokeWidth={2} />
+              <Text style={styles.modalTitle}>Configuration des horaires</Text>
+              <TouchableOpacity onPress={() => setShowWorkingHoursModal(false)}>
+                <X color="#6b7280" size={24} strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
+            
+            <Text style={styles.modalMessage}>
+              Configurez les heures d'ouverture et de fermeture du magasin. Ces horaires seront utilisés pour valider les tâches des managers.
+            </Text>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Heure d'ouverture</Text>
+              <TouchableOpacity 
+                style={styles.timeButton}
+                onPress={openStartTimePicker}
+              >
+                <Clock color="#3b82f6" size={20} strokeWidth={2} />
+                <Text style={styles.timeButtonText}>{tempWorkingHours.start}</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Heure de fermeture</Text>
+              <TouchableOpacity 
+                style={styles.timeButton}
+                onPress={openEndTimePicker}
+              >
+                <Clock color="#3b82f6" size={20} strokeWidth={2} />
+                <Text style={styles.timeButtonText}>{tempWorkingHours.end}</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.currentHoursInfo}>
+              <Text style={styles.currentHoursLabel}>Horaires actuels :</Text>
+              <Text style={styles.currentHoursValue}>{workingHours.start} - {workingHours.end}</Text>
+              <TouchableOpacity 
+                style={styles.refreshButton}
+                onPress={loadWorkingHours}
+              >
+                <Text style={styles.refreshButtonText}>🔄 Actualiser</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.modalActions}>
+              <TouchableOpacity 
+                style={styles.modalButton}
+                onPress={() => setShowWorkingHoursModal(false)}
+              >
+                <Text style={styles.modalButtonText}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[
+                  styles.modalButton, 
+                  styles.primaryButton,
+                  isSavingHours && styles.disabledButton
+                ]}
+                onPress={saveWorkingHours}
+                disabled={isSavingHours}
+              >
+                <Text style={styles.primaryButtonText}>
+                  {isSavingHours ? 'Sauvegarde...' : 'Sauvegarder'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Start Time Picker Modal */}
+      <Modal
+        visible={showStartTimePicker}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowStartTimePicker(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Heure d'ouverture</Text>
+              <TouchableOpacity onPress={() => setShowStartTimePicker(false)}>
+                <X color="#6b7280" size={24} strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.timePickerContainer}>
+              <View style={styles.timePickerSection}>
+                <Text style={styles.timePickerLabel}>Heures</Text>
+                <ScrollView style={styles.timePickerScroll} showsVerticalScrollIndicator={false}>
+                  {generateAvailableHours().map((hour) => (
+                    <TouchableOpacity
+                      key={`start-hour-${hour}`}
+                      style={[
+                        styles.timeOption,
+                        tempStartHour === hour && styles.selectedTimeOption
+                      ]}
+                      onPress={() => setTempStartHour(hour)}
+                    >
+                      <Text style={[
+                        styles.timeOptionText,
+                        tempStartHour === hour && styles.selectedTimeText
+                      ]}>
+                        {hour}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+
+              <View style={styles.timePickerDivider}>
+                <Text style={styles.timePickerDividerText}>:</Text>
+              </View>
+
+              <View style={styles.timePickerSection}>
+                <Text style={styles.timePickerLabel}>Minutes</Text>
+                <ScrollView style={styles.timePickerScroll} showsVerticalScrollIndicator={false}>
+                  {generateAvailableMinutes().map((minute) => (
+                    <TouchableOpacity
+                      key={`start-minute-${minute}`}
+                      style={[
+                        styles.timeOption,
+                        tempStartMinute === minute && styles.selectedTimeOption
+                      ]}
+                      onPress={() => setTempStartMinute(minute)}
+                    >
+                      <Text style={[
+                        styles.timeOptionText,
+                        tempStartMinute === minute && styles.selectedTimeText
+                      ]}>
+                        {minute}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity 
+                style={styles.modalButton}
+                onPress={() => setShowStartTimePicker(false)}
+              >
+                <Text style={styles.modalButtonText}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.modalButton, styles.primaryButton]}
+                onPress={() => {
+                  setTempWorkingHours(prev => ({ 
+                    ...prev, 
+                    start: `${tempStartHour}:${tempStartMinute}` 
+                  }));
+                  setShowStartTimePicker(false);
+                }}
+              >
+                <Text style={styles.primaryButtonText}>Confirmer</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* End Time Picker Modal */}
+      <Modal
+        visible={showEndTimePicker}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowEndTimePicker(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Heure de fermeture</Text>
+              <TouchableOpacity onPress={() => setShowEndTimePicker(false)}>
+                <X color="#6b7280" size={24} strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.timePickerContainer}>
+              <View style={styles.timePickerSection}>
+                <Text style={styles.timePickerLabel}>Heures</Text>
+                <ScrollView style={styles.timePickerScroll} showsVerticalScrollIndicator={false}>
+                  {generateAvailableHours().map((hour) => (
+                    <TouchableOpacity
+                      key={`end-hour-${hour}`}
+                      style={[
+                        styles.timeOption,
+                        tempEndHour === hour && styles.selectedTimeOption
+                      ]}
+                      onPress={() => setTempEndHour(hour)}
+                    >
+                      <Text style={[
+                        styles.timeOptionText,
+                        tempEndHour === hour && styles.selectedTimeText
+                      ]}>
+                        {hour}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+
+              <View style={styles.timePickerDivider}>
+                <Text style={styles.timePickerDividerText}>:</Text>
+              </View>
+
+              <View style={styles.timePickerSection}>
+                <Text style={styles.timePickerLabel}>Minutes</Text>
+                <ScrollView style={styles.timePickerScroll} showsVerticalScrollIndicator={false}>
+                  {generateAvailableMinutes().map((minute) => (
+                    <TouchableOpacity
+                      key={`end-minute-${minute}`}
+                      style={[
+                        styles.timeOption,
+                        tempEndMinute === minute && styles.selectedTimeOption
+                      ]}
+                      onPress={() => setTempEndMinute(minute)}
+                    >
+                      <Text style={[
+                        styles.timeOptionText,
+                        tempEndMinute === minute && styles.selectedTimeText
+                      ]}>
+                        {minute}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity 
+                style={styles.modalButton}
+                onPress={() => setShowEndTimePicker(false)}
+              >
+                <Text style={styles.modalButtonText}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.modalButton, styles.primaryButton]}
+                onPress={() => {
+                  setTempWorkingHours(prev => ({ 
+                    ...prev, 
+                    end: `${tempEndHour}:${tempEndMinute}` 
+                  }));
+                  setShowEndTimePicker(false);
+                }}
+              >
+                <Text style={styles.primaryButtonText}>Confirmer</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Alert Modal */}
       <Modal
@@ -487,6 +951,27 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  mainTitleContainer: {
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 16,
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  mainTitle: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: '#1a1a1a',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  mainSubtitle: {
+    fontSize: 16,
+    color: '#6b7280',
+    textAlign: 'center',
+    fontWeight: '500',
   },
   header: {
     flexDirection: 'row',
@@ -547,6 +1032,23 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  tasksButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#ffffff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 3,
+  },
   alertButton: {
     width: 40,
     height: 40,
@@ -582,12 +1084,13 @@ const styles = StyleSheet.create({
   },
   statsContainer: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     paddingHorizontal: 24,
     gap: 12,
     marginBottom: 32,
   },
   statCard: {
-    flex: 1,
+    width: '48%',
     backgroundColor: '#ffffff',
     borderRadius: 12,
     padding: 16,
@@ -882,6 +1385,10 @@ const styles = StyleSheet.create({
   primaryButton: {
     backgroundColor: '#ef4444',
   },
+  disabledButton: {
+    backgroundColor: '#9ca3af',
+    opacity: 0.6,
+  },
   modalButtonText: {
     fontSize: 16,
     fontWeight: '600',
@@ -910,5 +1417,229 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#6b7280',
     fontWeight: '500',
+  },
+  // Styles pour les tâches planifiées
+  tasksContainer: {
+    gap: 12,
+  },
+  emptyTasksState: {
+    alignItems: 'center',
+    padding: 40,
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+  },
+  emptyTasksText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#6b7280',
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  emptyTasksSubtext: {
+    fontSize: 14,
+    color: '#9ca3af',
+    textAlign: 'center',
+  },
+  taskCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  taskHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  taskInfo: {
+    flex: 1,
+  },
+  taskTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1a1a1a',
+    marginBottom: 4,
+  },
+  taskManager: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  taskStatus: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  taskStatusText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+  taskDetails: {
+    marginBottom: 12,
+  },
+  taskDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  taskDetailText: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginLeft: 6,
+  },
+  taskProgress: {
+    marginTop: 8,
+  },
+  taskProgressText: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 4,
+  },
+  viewAllTasksButton: {
+    backgroundColor: '#f3f4f6',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  viewAllTasksText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#3b82f6',
+  },
+  workingHoursButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#ffffff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  inputContainer: {
+    marginBottom: 16,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: '#1f2937',
+    backgroundColor: '#ffffff',
+  },
+  currentHoursInfo: {
+    backgroundColor: '#f3f4f6',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 24,
+  },
+  currentHoursLabel: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 4,
+  },
+  currentHoursValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1f2937',
+  },
+  refreshButton: {
+    marginTop: 8,
+    padding: 8,
+    backgroundColor: '#3b82f6',
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  refreshButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+  // Styles pour les time pickers
+  timeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f9fafb',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    padding: 16,
+    gap: 12,
+  },
+  timeButtonText: {
+    fontSize: 16,
+    color: '#1f2937',
+    fontWeight: '500',
+  },
+  timePickerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginVertical: 20,
+  },
+  timePickerSection: {
+    flex: 1,
+  },
+  timePickerLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1a1a1a',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  timePickerScroll: {
+    maxHeight: 200,
+  },
+  timeOption: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+    backgroundColor: '#fff',
+    alignItems: 'center',
+  },
+  selectedTimeOption: {
+    backgroundColor: '#3b82f6',
+  },
+  timeOptionText: {
+    fontSize: 18,
+    color: '#1a1a1a',
+    fontWeight: '500',
+  },
+  selectedTimeText: {
+    color: '#ffffff',
+    fontWeight: '600',
+  },
+  timePickerDivider: {
+    paddingHorizontal: 20,
+  },
+  timePickerDividerText: {
+    fontSize: 24,
+    color: '#6b7280',
+    fontWeight: '600',
   },
 });

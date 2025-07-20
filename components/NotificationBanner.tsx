@@ -102,6 +102,8 @@ export const NotificationBanner: React.FC<NotificationBannerProps> = ({ onClose 
         return <AlertTriangle color="#ffffff" size={20} strokeWidth={2} />;
       case 'employee_update':
         return <Users color="#ffffff" size={20} strokeWidth={2} />;
+      case 'task_created':
+        return <CheckCircle color="#ffffff" size={20} strokeWidth={2} />;
       default:
         return <Bell color="#ffffff" size={20} strokeWidth={2} />;
     }
@@ -118,6 +120,8 @@ export const NotificationBanner: React.FC<NotificationBannerProps> = ({ onClose 
         return '#ef4444'; // Rouge
       case 'employee_update':
         return '#f59e0b'; // Orange
+      case 'task_created':
+        return '#10b981'; // Vert (même que task_reminder)
       default:
         return '#3b82f6'; // Bleu
     }

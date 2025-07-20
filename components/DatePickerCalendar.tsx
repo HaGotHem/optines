@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   ScrollView,
   Modal,
   Animated,
+  Platform,
 } from 'react-native';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react-native';
 
@@ -28,122 +29,87 @@ export default function DatePickerCalendar({
   maxDate = new Date(Date.now() + 84 * 24 * 60 * 60 * 1000), // 12 weeks from now
 }: DatePickerCalendarProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [fadeAnim] = useState(new Animated.Value(0));
+
+  // Mémoriser les dates pour éviter les recalculs
+  const memoizedMinDate = useMemo(() => minDate, [minDate]);
+  const memoizedMaxDate = useMemo(() => maxDate, [maxDate]);
+  const memoizedSelectedDate = useMemo(() => selectedDate, [selectedDate]);
 
   useEffect(() => {
     if (visible) {
-      setCurrentMonth(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1));
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
-    } else {
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
+      setCurrentMonth(new Date(memoizedSelectedDate.getFullYear(), memoizedSelectedDate.getMonth(), 1));
     }
+  }, [visible, memoizedSelectedDate]);
+
+  const getDaysInMonth = useCallback((date: Date) => {
+    return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
   }, []);
 
-  const getDaysInMonth = (date: Date) => {
-    return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-  };
-
-  const getFirstDayOfMonth = (date: Date) => {
+  const getFirstDayOfMonth = useCallback((date: Date) => {
     return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
-  };
+  }, []);
 
-  const isToday = (date: Date) => {
+  const isToday = useCallback((date: Date) => {
     const today = new Date();
     return date.toDateString() === today.toDateString();
-  };
+  }, []);
 
-  const isSelected = (date: Date) => {
-    return date.toDateString() === selectedDate.toDateString();
-  };
+  const isSelected = useCallback((date: Date) => {
+    return date.toDateString() === memoizedSelectedDate.toDateString();
+  }, [memoizedSelectedDate]);
 
-  const isDisabled = (date: Date) => {
-    return date < minDate || date > maxDate;
-  };
+  const isDisabled = useCallback((date: Date) => {
+    return date < memoizedMinDate || date > memoizedMaxDate;
+  }, [memoizedMinDate, memoizedMaxDate]);
 
-  const isSameMonth = (date1: Date, date2: Date) => {
+  const isSameMonth = useCallback((date1: Date, date2: Date) => {
     return date1.getFullYear() === date2.getFullYear() && date1.getMonth() === date2.getMonth();
-  };
-
-  const goToPreviousMonth = () => {
-    console.log('goToPreviousMonth called');
-    const newMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1);
-    console.log('New month to navigate to:', newMonth.toISOString());
-    
-    // Utiliser la même logique que canGoToPreviousMonth
-    const currentMonthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
-    const normalizedCurrentMonthStart = normalizeDate(currentMonthStart);
-    const normalizedMinDate = normalizeDate(minDate);
-    
-    if (normalizedCurrentMonthStart > normalizedMinDate) {
-      console.log('Navigating to previous month');
-      setCurrentMonth(newMonth);
-    } else {
-      console.log('Cannot navigate - at minimum month');
-    }
-  };
-
-  const goToNextMonth = () => {
-    const newMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
-    const normalizedNewMonth = normalizeDate(newMonth);
-    const normalizedMaxDate = normalizeDate(maxDate);
-    if (normalizedNewMonth <= normalizedMaxDate) {
-      setCurrentMonth(newMonth);
-    }
-  };
+  }, []);
 
   // Normaliser une date pour la comparaison (ignorer l'heure)
-  const normalizeDate = (date: Date) => {
+  const normalizeDate = useCallback((date: Date) => {
     return new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  };
+  }, []);
 
   // Vérifier si on peut aller au mois précédent
-  const canGoToPreviousMonth = () => {
-    const previousMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1);
-    const normalizedPreviousMonth = normalizeDate(previousMonth);
-    const normalizedMinDate = normalizeDate(minDate);
-    
-    console.log('Navigation debug - Previous month check:');
-    console.log('Current month:', currentMonth.toISOString());
-    console.log('Previous month:', previousMonth.toISOString());
-    console.log('Normalized previous month:', normalizedPreviousMonth.toISOString());
-    console.log('Min date:', minDate.toISOString());
-    console.log('Normalized min date:', normalizedMinDate.toISOString());
-    console.log('Can go to previous month:', normalizedPreviousMonth >= normalizedMinDate);
-    
-    // Alternative: permettre la navigation si on n'est pas au mois minimum
+  const canGoToPreviousMonth = useCallback(() => {
     const currentMonthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
     const normalizedCurrentMonthStart = normalizeDate(currentMonthStart);
-    const canNavigate = normalizedCurrentMonthStart > normalizedMinDate;
+    const normalizedMinDate = normalizeDate(memoizedMinDate);
     
-    console.log('Alternative check - Can navigate:', canNavigate);
-    
-    return canNavigate;
-  };
+    return normalizedCurrentMonthStart > normalizedMinDate;
+  }, [currentMonth, memoizedMinDate, normalizeDate]);
 
   // Vérifier si on peut aller au mois suivant
-  const canGoToNextMonth = () => {
+  const canGoToNextMonth = useCallback(() => {
     const nextMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
     const normalizedNextMonth = normalizeDate(nextMonth);
-    const normalizedMaxDate = normalizeDate(maxDate);
+    const normalizedMaxDate = normalizeDate(memoizedMaxDate);
     return normalizedNextMonth <= normalizedMaxDate;
-  };
+  }, [currentMonth, memoizedMaxDate, normalizeDate]);
 
-  const handleDateSelect = (date: Date) => {
+  const goToPreviousMonth = useCallback(() => {
+    if (canGoToPreviousMonth()) {
+      const newMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1);
+      setCurrentMonth(newMonth);
+    }
+  }, [currentMonth, canGoToPreviousMonth]);
+
+  const goToNextMonth = useCallback(() => {
+    if (canGoToNextMonth()) {
+      const newMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
+      setCurrentMonth(newMonth);
+    }
+  }, [currentMonth, canGoToNextMonth]);
+
+  const handleDateSelect = useCallback((date: Date) => {
     if (!isDisabled(date)) {
       onDateSelect(date);
       onClose();
     }
-  };
+  }, [isDisabled, onDateSelect, onClose]);
 
-  const generateCalendarDays = () => {
+  const generateCalendarDays = useCallback(() => {
     const daysInMonth = getDaysInMonth(currentMonth);
     const firstDayOfMonth = getFirstDayOfMonth(currentMonth);
     const days = [];
@@ -189,13 +155,13 @@ export default function DatePickerCalendar({
     }
 
     return days;
-  };
+  }, [currentMonth, getDaysInMonth, getFirstDayOfMonth, isDisabled, isSelected, isToday, handleDateSelect]);
 
-  const weekDays = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
-  const monthNames = [
+  const weekDays = useMemo(() => ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'], []);
+  const monthNames = useMemo(() => [
     'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
     'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
-  ];
+  ], []);
 
   return (
     <Modal
@@ -204,8 +170,11 @@ export default function DatePickerCalendar({
       animationType="none"
       onRequestClose={onClose}
     >
-      <Animated.View style={[styles.modalOverlay, { opacity: fadeAnim }]}>
-        <View style={styles.calendarContainer}>
+      <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={onClose}>
+        <View style={[styles.calendarContainer, Platform.OS !== 'web' && { width: '95%' }]}
+          // Empêche la propagation du clic pour ne pas fermer si on clique sur le calendrier
+          onStartShouldSetResponder={() => true}
+        >
           <View style={styles.calendarHeader}>
             <Text style={styles.calendarTitle}>Sélectionner une date</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
@@ -260,7 +229,7 @@ export default function DatePickerCalendar({
             </View>
           </View>
         </View>
-      </Animated.View>
+      </TouchableOpacity>
     </Modal>
   );
 }

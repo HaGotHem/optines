@@ -15,7 +15,7 @@ import {
   Platform,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Calculator, Clock, Package, Users, Plus, Minus, TriangleAlert as AlertTriangle, Calendar, X } from 'lucide-react-native';
+import { Calculator, Clock, Package, Users, Plus, Minus, TriangleAlert as AlertTriangle, Calendar, X, CheckCircle } from 'lucide-react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useNotifications } from '../../hooks/useNotifications';
 import * as Notifications from 'expo-notifications';
@@ -24,10 +24,11 @@ import { Swipeable } from 'react-native-gesture-handler';
 import { useTheme } from '../../contexts/ThemeContext';
 import { ArrowLeft } from 'lucide-react-native';
 import { useSupabaseAuth } from '../../hooks/useSupabaseAuth';
-import { useSupabaseTeam } from '../../hooks/useSupabaseTeam';
+import { useSupabaseEmployees } from '../../hooks/useSupabaseEmployees';
+import { useSupabaseBreaks } from '../../hooks/useSupabaseBreaks';
 import { useSupabaseTasks } from '../../hooks/useSupabaseTasks';
+import { useSupabaseWorkingHours } from '../../hooks/useSupabaseWorkingHours';
 import { useUserProfile } from '../../hooks/useUserProfile';
-import { useSupabaseEvents, RecurrenceType } from '../../hooks/useSupabaseEvents';
 import { useTaskRefresh } from '../../contexts/TaskRefreshContext';
 
 interface TeamMember {
@@ -69,20 +70,40 @@ export default function JobCalculatorTab() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
-  const [selectedStartTime, setSelectedStartTime] = useState('05:00');
+  const [selectedStartTime, setSelectedStartTime] = useState('06:00');
   const [showConflictAlert, setShowConflictAlert] = useState(false);
   const [conflictMessage, setConflictMessage] = useState('');
 
   // États pour le nouveau sélecteur d'heure
-  const [tempSelectedHour, setTempSelectedHour] = useState('05');
+  const [tempSelectedHour, setTempSelectedHour] = useState('06');
   const [tempSelectedMinute, setTempSelectedMinute] = useState('00');
-  const [workingHours, setWorkingHours] = useState({ start: '05:00', end: '21:00' });
+  const [workingHours, setWorkingHours] = useState({ start: '06:00', end: '21:00' });
+
+  // Hook pour les horaires de travail synchronisés
+  const { 
+    workingHours: storeWorkingHours, 
+    isLoading: workingHoursLoading 
+  } = useSupabaseWorkingHours();
 
   // État pour la popup de conflit
   const [showConflictModal, setShowConflictModal] = useState(false);
   const [conflictDetails, setConflictDetails] = useState<{title: string, startTime: string, endTime: string} | null>(null);
   const [allConflicts, setAllConflicts] = useState<Array<{title: string, startTime: string, endTime: string, type?: string}>>([]);
   const [pendingTask, setPendingTask] = useState<Task | null>(null);
+  
+  // État pour la popup de confirmation de création de tâche
+  const [showTaskConfirmationModal, setShowTaskConfirmationModal] = useState(false);
+  const [taskToConfirm, setTaskToConfirm] = useState<Task | null>(null);
+  
+  // État pour la popup d'alerte des horaires de travail
+  const [showWorkingHoursAlertModal, setShowWorkingHoursAlertModal] = useState(false);
+  const [workingHoursAlertData, setWorkingHoursAlertData] = useState<{
+    selectedTime: string;
+    workingStart: string;
+    workingEnd: string;
+    endTime?: string;
+    isEndTimeInvalid?: boolean;
+  } | null>(null);
 
   // États pour le menu de sélection des employés
   const [showEmployeeSelector, setShowEmployeeSelector] = useState(false);
@@ -105,12 +126,8 @@ export default function JobCalculatorTab() {
 
   const [showDevTools, setShowDevTools] = useState(false);
 
-  // États pour la récurrence
-  const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('none');
-  const [recurrenceDays, setRecurrenceDays] = useState<number[]>([]);
-  const [recurrenceEndDate, setRecurrenceEndDate] = useState<Date | null>(null);
-  const [showRecurrenceOptions, setShowRecurrenceOptions] = useState(false);
-  const [showRecurrenceEndDatePicker, setShowRecurrenceEndDatePicker] = useState(false);
+  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
+  const [endDate, setEndDate] = useState<Date | null>(null);
 
   // TOUS LES HOOKS DOIVENT ÊTRE APPELÉS ICI, AVANT TOUS LES EARLY RETURNS
   const { isDark } = useTheme();
@@ -120,21 +137,55 @@ export default function JobCalculatorTab() {
   // Détermination robuste du managerId
   const managerId = user?.app_metadata?.user_id?.toString() || user?.id?.toString();
 
-  // Hook Supabase pour charger les employés (uniquement si managerId existe)
+  // Hook Supabase pour charger les employés (filtre par section du manager)
+  // Si pas de section, charger tous les employés du store
+  const employeeFilters = profile?.section 
+    ? { section: profile.section } 
+    : (profile?.store_id ? { store_id: profile.store_id } : undefined);
   const {
-    members: allEmployees,
+    employees: allEmployees,
     isLoading: employeesLoading
-  } = useSupabaseTeam(managerId);
+  } = useSupabaseEmployees(employeeFilters);
+
+  // Debug des filtres d'employés
+  useEffect(() => {
+    console.log('🟦 [DEBUG] Calculator - Employee filters:', {
+      profileSection: profile?.section,
+      employeeFilters,
+      hasFilters: !!employeeFilters
+    });
+  }, [profile?.section, employeeFilters]);
 
   // Debug des employés chargés
   useEffect(() => {
     console.log('🟦 [DEBUG] Calculator - Employees state changed:', {
-      managerId,
+      profileSection: profile?.section,
+      profileId: profile?.id,
+      profileName: profile?.full_name,
       allEmployees: allEmployees ? allEmployees.length : 'null/undefined',
       employeesLoading,
-      employees: allEmployees ? allEmployees.map(e => ({id: e.id, name: e.name, role: e.role})) : 'null/undefined'
+      employees: allEmployees ? allEmployees.map(e => ({id: e.id, name: e.name, role: e.role, section: e.section})) : 'null/undefined'
     });
-  }, [allEmployees, employeesLoading, managerId]);
+  }, [allEmployees, employeesLoading, profile?.section, profile?.id, profile?.full_name]);
+
+  // Recalculer le temps quand l'équipe change
+  useEffect(() => {
+    console.log('🔄 Équipe changée, recalcul du temps...', {
+      teamSize: teamMembers.length,
+      teamMembers: teamMembers.map(m => m.name)
+    });
+    
+    // Le calcul se fait automatiquement via timeCalculation qui dépend de teamMembers
+  }, [teamMembers]);
+
+  // Charger les horaires de travail depuis Supabase
+  useEffect(() => {
+    if (storeWorkingHours) {
+      const hours = { start: storeWorkingHours.start_time, end: storeWorkingHours.end_time };
+      setWorkingHours(hours);
+      console.log('✅ Horaires de travail synchronisés depuis Supabase:', hours);
+    }
+  }, [storeWorkingHours]);
 
   // Hook Supabase pour gérer les tâches - TOUJOURS APPELÉ
   const {
@@ -143,28 +194,23 @@ export default function JobCalculatorTab() {
     createTask,
     deleteTask,
     toggleTaskComplete,
-    getTasksByDate
+    getTasksByDate,
+    getPackagesProgress
   } = useSupabaseTasks({
-    managerId: user?.app_metadata?.user_id?.toString()
-  });
-
-  // Hook pour les événements récurrents
-  const {
-    events,
-    isLoading: eventsLoading,
-    createEvent,
-    generateTasksForDate,
-    generateTasksForRange,
-    getRecurrenceDescription
-  } = useSupabaseEvents({
     managerId: managerId
+  });
+  
+  // Hook pour gérer les pauses des employés - filtrer uniquement par les employés de l'équipe
+  const { breaks: employeeBreaks, calculateOverlappingBreaksDuration } = useSupabaseBreaks({
+    date: selectedDate.toISOString().split('T')[0],
+    team_member_ids: allEmployees.map(emp => emp.id) // Filtrer uniquement les employés de l'équipe
   });
   
   const { triggerRefresh } = useTaskRefresh();
 
   // FONCTIONS UTILITAIRES - DOIVENT ÊTRE DÉFINIES AVANT LES USEEFFECT
   const loadTotalEmployees = async () => {
-    // Le nombre total d'employés est maintenant fourni par useSupabaseTeam
+    // Le nombre total d'employés est maintenant fourni par useSupabaseEmployees
     // via allEmployees.length
     if (allEmployees && allEmployees.length > 0) {
       setTotalEmployeesDynamic(allEmployees.length);
@@ -218,9 +264,27 @@ export default function JobCalculatorTab() {
       const additionalMembers = teamMembers.length - 1;
       const teamBonusSeconds = additionalMembers * 30 * 60;
     
-    // Calculate total time
-      const totalTimeSeconds = Math.max(0, baseTimeSeconds + palettePenaltySeconds - teamBonusSeconds);
-      
+    // Calculate base total time
+      const baseTotalTimeSeconds = Math.max(0, baseTimeSeconds + palettePenaltySeconds - teamBonusSeconds);
+    
+    // Calculate breaks impact for each team member
+    let totalBreaksImpact = 0;
+    const selectedDateString = selectedDate.toISOString().split('T')[0];
+    const taskEndTime = calculateEndTime(selectedStartTime, baseTotalTimeSeconds);
+    
+    teamMembers.forEach(member => {
+      const breaksImpact = calculateOverlappingBreaksDuration(
+        selectedStartTime, 
+        taskEndTime, 
+        member.id, 
+        selectedDateString
+      );
+      totalBreaksImpact += breaksImpact;
+    });
+    
+    // Add breaks impact to total time
+    const totalTimeSeconds = baseTotalTimeSeconds + totalBreaksImpact;
+    
     // Convert to hours and minutes
     const hours = Math.floor(totalTimeSeconds / 3600);
     const minutes = Math.floor((totalTimeSeconds % 3600) / 60);
@@ -230,6 +294,7 @@ export default function JobCalculatorTab() {
       baseTime: baseTimeSeconds,
       palettePenalty: palettePenaltySeconds,
       teamBonus: teamBonusSeconds,
+      breaksImpact: totalBreaksImpact,
       totalTime: totalTimeSeconds,
       hours,
       minutes,
@@ -322,18 +387,20 @@ export default function JobCalculatorTab() {
       const selectedDateString = selectedDate.toISOString().split('T')[0];
       console.log('📅 Date sélectionnée:', selectedDateString);
       
-      // Utiliser les tâches de Supabase au lieu d'AsyncStorage
-      const tasksForSelectedDate = await getTasksByDate(selectedDateString);
-      console.log('📋 Tâches Supabase pour la date sélectionnée:', tasksForSelectedDate);
+      // Utiliser la fonction optimisée du hook pour calculer les colis traités
+      const packagesProgress = getPackagesProgress(selectedDateString);
+      console.log('📦 Progression des colis calculée:', packagesProgress);
       
-      const total = tasksForSelectedDate.reduce((sum: number, t: any) => sum + (t.packages || 0), 0);
-      const traites = tasksForSelectedDate.filter((t: any) => t.is_completed).reduce((sum: number, t: any) => sum + (t.packages || 0), 0);
+      console.log('📊 Résultats calcul:', { 
+        total: packagesProgress.totalPackages, 
+        traites: packagesProgress.treatedPackages, 
+        pourcentage: packagesProgress.progressPercentage 
+      });
+      console.log(`📦 Colis traités: ${packagesProgress.treatedPackages}/${packagesProgress.totalPackages} (${packagesProgress.progressPercentage}%)`);
       
-      console.log('📊 Résultats calcul:', { total, traites, pourcentage: total > 0 ? Math.round((traites / total) * 100) : 0 });
-      
-      setTotalColisJour(total);
-      setColisTraitesJour(traites);
-      setPourcentageColisTraites(total > 0 ? Math.round((traites / total) * 100) : 0);
+      setTotalColisJour(packagesProgress.totalPackages);
+      setColisTraitesJour(packagesProgress.treatedPackages);
+      setPourcentageColisTraites(packagesProgress.progressPercentage);
     } catch (e) {
       console.error('❌ Erreur dans calculerStatsColis:', e);
       setTotalColisJour(0);
@@ -346,7 +413,7 @@ export default function JobCalculatorTab() {
     setPackages('');
     setPaletteCondition(true);
     setTeamMembers([]);
-    setSelectedStartTime('05:00');
+    setSelectedStartTime('06:00');
     setShowTaskModal(false);
     setShowTimePicker(false);
     setShowConflictAlert(false);
@@ -358,15 +425,10 @@ export default function JobCalculatorTab() {
     setShowEmployeeSelector(false);
     setAssignedEmployees([]);
     setAssignedEmployeeIds([]);
-    setTempSelectedHour('05');
+    setTempSelectedHour('06');
     setTempSelectedMinute('00');
-    
-    // Reset récurrence
-    setRecurrenceType('none');
-    setRecurrenceDays([]);
-    setRecurrenceEndDate(null);
-    setShowRecurrenceOptions(false);
-    setShowRecurrenceEndDatePicker(false);
+    setShowEndDatePicker(false);
+    setEndDate(null);
   };
         
   // TOUS LES USEEFFECT APRÈS LES FONCTIONS
@@ -391,6 +453,24 @@ export default function JobCalculatorTab() {
     calculerStatsColis();
   }, []);
 
+  // Recalculer les stats de colis quand les tâches changent
+  useEffect(() => {
+    if (!tasksLoading && supabaseTasks) {
+      console.log('🔄 [CALCULATOR] Tâches changées, recalcul des stats de colis...');
+      calculerStatsColis();
+    }
+  }, [tasksLoading, supabaseTasks]);
+
+  // Rafraîchissement automatique des statistiques de colis toutes les 30 secondes
+  useEffect(() => {
+    const interval = setInterval(() => {
+      console.log('⏰ [CALCULATOR] Rafraîchissement automatique des stats de colis...');
+      calculerStatsColis();
+    }, 30000); // 30 secondes
+    
+    return () => clearInterval(interval);
+  }, []);
+
   // Charger les heures de travail au montage du composant
   useEffect(() => {
     loadWorkingHours();
@@ -405,6 +485,14 @@ export default function JobCalculatorTab() {
   useEffect(() => {
     calculateAvailableEmployees();
   }, [totalEmployeesDynamic]);
+
+  // Mettre à jour le nombre total d'employés quand allEmployees change
+  useEffect(() => {
+    if (allEmployees && allEmployees.length > 0) {
+      setTotalEmployeesDynamic(allEmployees.length);
+      console.log('🔄 [CALCULATOR] Nombre total d\'employés mis à jour:', allEmployees.length);
+    }
+  }, [allEmployees]);
 
   // Générer les créneaux horaires selon les heures de travail
   const generateTimeSlots = () => {
@@ -422,23 +510,14 @@ export default function JobCalculatorTab() {
     return slots;
   };
 
-  // Générer les heures disponibles
+  // Générer les heures disponibles selon les heures de travail
   const generateAvailableHours = () => {
     const hours = [];
     const startHour = parseInt(workingHours.start.split(':')[0]);
     const endHour = parseInt(workingHours.end.split(':')[0]);
-    
-    console.log('Generating available hours:', {
-      workingHours,
-      startHour,
-      endHour
-    });
-    
     for (let hour = startHour; hour <= endHour; hour++) {
       hours.push(hour.toString().padStart(2, '0'));
     }
-    
-    console.log('Available hours generated:', hours);
     return hours;
   };
 
@@ -494,6 +573,19 @@ export default function JobCalculatorTab() {
       const newTeamMembers = [...teamMembers, employee];
       setTeamMembers(newTeamMembers);
       
+      console.log(`✅ Employé ${employee.name} ajouté à l'équipe. Nouvelle taille: ${newTeamMembers.length}`);
+      
+      // Recalculer le temps et l'heure de fin
+      setTimeout(() => {
+        const newTimeCalculation = calculateWorkTime();
+        console.log('🕐 Nouveau calcul du temps:', {
+          teamSize: newTeamMembers.length,
+          totalTime: newTimeCalculation.totalTime,
+          formattedTime: newTimeCalculation.formattedTime,
+          endTime: calculateEndTime(selectedStartTime, newTimeCalculation.totalTime)
+        });
+      }, 100);
+      
       // Rafraîchir la liste des employés disponibles
       if (showEmployeeSelector) {
         setTimeout(() => loadAssignedEmployees(), 100);
@@ -503,8 +595,24 @@ export default function JobCalculatorTab() {
 
   // Supprimer un employé de l'équipe
   const removeEmployeeFromTeam = (employeeId: number) => {
+    const employeeToRemove = teamMembers.find(member => member.id === employeeId);
     const newTeamMembers = teamMembers.filter(member => member.id !== employeeId);
     setTeamMembers(newTeamMembers);
+    
+    if (employeeToRemove) {
+      console.log(`❌ Employé ${employeeToRemove.name} retiré de l'équipe. Nouvelle taille: ${newTeamMembers.length}`);
+      
+      // Recalculer le temps et l'heure de fin
+      setTimeout(() => {
+        const newTimeCalculation = calculateWorkTime();
+        console.log('🕐 Nouveau calcul du temps:', {
+          teamSize: newTeamMembers.length,
+          totalTime: newTimeCalculation.totalTime,
+          formattedTime: newTimeCalculation.formattedTime,
+          endTime: calculateEndTime(selectedStartTime, newTimeCalculation.totalTime)
+        });
+      }, 100);
+    }
     
     // Rafraîchir la liste des employés disponibles
     if (showEmployeeSelector) {
@@ -739,16 +847,27 @@ export default function JobCalculatorTab() {
     const workingStartMinutes = parseInt(workingHours.start.split(':')[0]) * 60 + parseInt(workingHours.start.split(':')[1]);
     const workingEndMinutes = parseInt(workingHours.end.split(':')[0]) * 60 + parseInt(workingHours.end.split(':')[1]);
     
-    if (taskStartMinutes < workingStartMinutes || taskStartMinutes > workingEndMinutes) {
-      Alert.alert(
-        'Heure hors plage',
-        `La tâche doit commencer entre ${workingHours.start} et ${workingHours.end} selon le planning.`
-      );
+    // Calculer l'heure de fin de la tâche
+    const endTime = calculateEndTime(selectedStartTime, timeCalculation.totalTime);
+    const taskEndMinutes = parseInt(endTime.split(':')[0]) * 60 + parseInt(endTime.split(':')[1]);
+    
+    // Vérifier si le début OU la fin de la tâche est hors des heures de travail
+    const isStartTimeInvalid = taskStartMinutes < workingStartMinutes || taskStartMinutes > workingEndMinutes;
+    const isEndTimeInvalid = taskEndMinutes > workingEndMinutes;
+    
+    if (isStartTimeInvalid || isEndTimeInvalid) {
+      // Afficher la popup d'alerte des horaires de travail
+      setWorkingHoursAlertData({
+        selectedTime: selectedStartTime,
+        workingStart: workingHours.start,
+        workingEnd: workingHours.end,
+        endTime: endTime,
+        isEndTimeInvalid: isEndTimeInvalid
+      });
+      setShowWorkingHoursAlertModal(true);
       return;
     }
 
-    const endTime = calculateEndTime(selectedStartTime, timeCalculation.totalTime);
-    
     // Log de débogage pour la date
     console.log('📅 Date sélectionnée:', selectedDate);
     console.log('📅 Date formatée:', selectedDate.toISOString().split('T')[0]);
@@ -789,9 +908,10 @@ export default function JobCalculatorTab() {
       return;
     }
 
-    console.log('✅ Pas de conflit, sauvegarde de la tâche...');
-    // Pas de conflit, ajouter directement la tâche
-    await saveTask(task);
+    console.log('✅ Pas de conflit, affichage de la popup de confirmation...');
+    // Pas de conflit, afficher la popup de confirmation
+    setTaskToConfirm(task);
+    setShowTaskConfirmationModal(true);
   };
 
   const saveTask = async (task: Task) => {
@@ -836,26 +956,48 @@ export default function JobCalculatorTab() {
 
       console.log('✅ Tâche sauvegardée dans Supabase avec succès:', result.task);
 
+      // Envoyer une notification de confirmation
+      await sendImmediateNotification(
+        '✅ Tâche créée avec succès',
+        `${task.title} - ${task.packages} colis - ${task.team_size} employé${task.team_size > 1 ? 's' : ''} - ${task.duration}`,
+        { 
+          type: 'task_created', 
+          taskId: result.task.id,
+          taskTitle: task.title,
+          packages: task.packages,
+          teamSize: task.team_size,
+          duration: task.duration
+        }
+      );
+
       // Programmer un rappel de notification pour cette tâche
       await scheduleTaskReminder(task);
 
       // Afficher le modal de succès
       setShowTaskModal(true);
       
-      // Recalculer les employés disponibles après avoir ajouté la tâche
+      // Recalculer immédiatement les employés disponibles après avoir ajouté la tâche
       calculateAvailableEmployees();
       
-      // Recalculer les stats
-      setTimeout(() => {
-        console.log('🔄 Recalcul des stats après sauvegarde');
-        calculerStatsColis();
-      }, 200);
+      // Recalculer immédiatement les stats de colis
+      console.log('🔄 Recalcul immédiat des stats après sauvegarde');
+      calculerStatsColis();
       
       // Forcer le rechargement des tâches
       setTimeout(() => {
         console.log('🔄 Rechargement forcé des tâches');
         loadTasksForSelectedDate();
-      }, 500);
+        // Recalculer les stats après le rechargement des tâches
+        calculerStatsColis();
+      }, 300);
+      
+      // Déclencher un rafraîchissement global pour mettre à jour l'index manager
+      setTimeout(() => {
+        console.log('🔄 Déclenchement du rafraîchissement global pour l\'index manager');
+        triggerRefresh();
+        // Recalculer les stats une dernière fois après le refresh global
+        calculerStatsColis();
+      }, 800);
       
     } catch (error) {
       console.error('❌ Error saving task:', error);
@@ -881,6 +1023,11 @@ export default function JobCalculatorTab() {
       setPendingTask(null);
       setConflictDetails(null);
       setAllConflicts([]);
+      // Recalculer les stats après confirmation de tâche avec conflit
+      setTimeout(() => {
+        console.log('🔄 Recalcul des stats après confirmation de tâche avec conflit');
+        calculerStatsColis();
+      }, 500);
       // Nettoyer le formulaire après avoir confirmé la tâche avec conflit
       resetForm();
     }
@@ -891,6 +1038,39 @@ export default function JobCalculatorTab() {
     setPendingTask(null);
     setConflictDetails(null);
     setAllConflicts([]);
+  };
+
+  // Fonctions pour la popup de confirmation de tâche
+  const confirmTaskCreation = async () => {
+    if (taskToConfirm) {
+      await saveTask(taskToConfirm);
+      setShowTaskConfirmationModal(false);
+      setTaskToConfirm(null);
+      // Recalculer les stats après confirmation de tâche normale
+      setTimeout(() => {
+        console.log('🔄 Recalcul des stats après confirmation de tâche normale');
+        calculerStatsColis();
+      }, 500);
+      // Nettoyer le formulaire après confirmation
+      resetForm();
+    }
+  };
+
+  const cancelTaskCreation = () => {
+    setShowTaskConfirmationModal(false);
+    setTaskToConfirm(null);
+  };
+
+  // Fonctions pour la popup d'alerte des horaires de travail
+  const closeWorkingHoursAlert = () => {
+    setShowWorkingHoursAlertModal(false);
+    setWorkingHoursAlertData(null);
+  };
+
+  const openTimePickerFromAlert = () => {
+    setShowWorkingHoursAlertModal(false);
+    setWorkingHoursAlertData(null);
+    openTimePicker();
   };
 
   // Initialiser les valeurs temporaires du sélecteur d'heure
@@ -946,6 +1126,12 @@ export default function JobCalculatorTab() {
         tasks: filtered.map(t => ({id: t.id, title: t.title, packages: t.packages}))
       });
       setTasksForSelectedDate(filtered);
+      
+      // Recalculer les stats après le chargement des tâches
+      setTimeout(() => {
+        console.log('🔄 Recalcul des stats après chargement des tâches');
+        calculerStatsColis();
+      }, 100);
     } catch (e) {
       console.error('Erreur lors du chargement des tâches:', e);
       setTasksForSelectedDate([]);
@@ -964,20 +1150,21 @@ export default function JobCalculatorTab() {
     }
   }, [tasksLoading]);
 
-  // ✅ AJOUT : Rafraîchir les employés disponibles quand les tâches changent
+  // ✅ AJOUT : Rafraîchir les employés disponibles et les stats quand les tâches changent
   useEffect(() => {
-    console.log('🔄 Tâches chargées, recalcul des employés disponibles...');
+    console.log('🔄 Tâches chargées, recalcul des employés disponibles et des stats...');
     calculateAvailableEmployees();
+    calculerStatsColis();
   }, [tasksForSelectedDate]);
 
   // ✅ AJOUT : Rafraîchir les employés disponibles quand le refresh global est déclenché
   useEffect(() => {
-    if (refreshTrigger > 0) {
+    if (triggerRefresh > 0) {
       console.log('🔄 Refresh global détecté, recalcul des employés disponibles...');
       calculateAvailableEmployees();
       loadTasksForSelectedDate();
     }
-  }, [refreshTrigger]);
+  }, [triggerRefresh]);
 
   // Marquer une tâche comme traitée via Supabase
   const handleMarkTaskAsDone = async (taskId: string) => {
@@ -1109,101 +1296,6 @@ export default function JobCalculatorTab() {
 
   // Vérifier si un employé est déjà assigné à une tâche (occupé ou en conflit)
   // Fonctions pour la récurrence
-  const toggleRecurrenceDay = (day: number) => {
-    if (recurrenceDays.includes(day)) {
-      setRecurrenceDays(recurrenceDays.filter(d => d !== day));
-    } else {
-      setRecurrenceDays([...recurrenceDays, day]);
-    }
-  };
-
-  const handleRecurrenceTypeChange = (type: RecurrenceType) => {
-    setRecurrenceType(type);
-    
-    // Auto-configuration des jours selon le type
-    switch (type) {
-      case 'weekdays':
-        setRecurrenceDays([1, 2, 3, 4, 5]); // Lun-Ven
-        break;
-      case 'weekly':
-        // Prendre le jour de la semaine de la date sélectionnée
-        const dayOfWeek = selectedDate.getDay() === 0 ? 7 : selectedDate.getDay();
-        setRecurrenceDays([dayOfWeek]);
-        break;
-      case 'daily':
-        setRecurrenceDays([1, 2, 3, 4, 5, 6, 7]); // Tous les jours
-        break;
-      case 'none':
-      case 'custom':
-        setRecurrenceDays([]);
-        break;
-    }
-  };
-
-  const saveAsRecurringEvent = async () => {
-    if (!packages || teamMembers.length === 0) {
-      Alert.alert('Erreur', 'Veuillez remplir tous les champs obligatoires');
-      return;
-    }
-
-    try {
-      const eventData = {
-        title: `${currentManager.section} - ${currentManager.initials}`,
-        description: `Tâche récurrente de traitement de ${packages} colis`,
-        start_time: selectedStartTime,
-        duration_minutes: Math.floor(timeCalculation.totalTime / 60),
-        packages: parseInt(packages),
-        team_size: teamMembers.length,
-        manager_section: currentManager.section,
-        manager_initials: currentManager.initials,
-        palette_condition: paletteCondition,
-        team_members: teamMembers.map(m => m.id),
-        recurrence_type: recurrenceType,
-        recurrence_days: recurrenceDays,
-        start_date: selectedDate.toISOString().split('T')[0],
-        end_date: recurrenceEndDate ? recurrenceEndDate.toISOString().split('T')[0] : undefined,
-        manager_id: managerId,
-        store_id: 1
-      };
-
-      const result = await createEvent(eventData);
-      
-      if (result.success) {
-        Alert.alert(
-          'Événement récurrent créé !',
-          `L'événement "${eventData.title}" a été configuré avec une récurrence de type : ${getRecurrenceDescription(result.event)}.`,
-          [
-            {
-              text: 'Générer les tâches pour cette semaine',
-              onPress: async () => {
-                const today = new Date();
-                const endOfWeek = new Date(today);
-                endOfWeek.setDate(today.getDate() + (7 - today.getDay()));
-                
-                const generateResult = await generateTasksForRange(
-                  today.toISOString().split('T')[0],
-                  endOfWeek.toISOString().split('T')[0]
-                );
-                
-                if (generateResult.success) {
-                  Alert.alert('Succès', `${generateResult.count} tâche(s) générée(s) pour cette semaine !`);
-                  loadTasksForSelectedDate(); // Rafraîchir l'affichage
-                }
-              }
-            },
-            { text: 'OK', style: 'default' }
-          ]
-        );
-        resetForm();
-      } else {
-        Alert.alert('Erreur', result.error || 'Impossible de créer l\'événement récurrent');
-      }
-    } catch (error) {
-      console.error('Erreur lors de la création de l\'événement récurrent:', error);
-      Alert.alert('Erreur', 'Impossible de créer l\'événement récurrent');
-    }
-  };
-
   const getDayName = (day: number) => {
     const dayNames = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
     return dayNames[day - 1];
@@ -1225,11 +1317,18 @@ export default function JobCalculatorTab() {
       const newTaskStart = selectedStartTime;
       const newTaskEnd = calculateEndTime(selectedStartTime, totalTimeSeconds);
       
-      // Vérifier si l'employé est dans une tâche qui se chevauche
+      // Vérifier si l'employé est dans une tâche qui se chevauche TEMPORELLEMENT
       for (const task of tasksOnSameDate) {
-        // ✅ NOUVEAUTÉ : Ignorer les tâches terminées - les employés sont libérés
+        // Ignorer les tâches terminées
         if (task.is_completed) {
           continue;
+        }
+        
+        // Vérifier si l'employé est dans cette tâche
+        const isInTask = task.team_members && task.team_members.includes(employeeId);
+        
+        if (!isInTask) {
+          continue; // L'employé n'est pas dans cette tâche
         }
         
         const existingStart = task.start_time;
@@ -1240,31 +1339,16 @@ export default function JobCalculatorTab() {
         const existingStartMinutes = parseInt(existingStart.split(':')[0]) * 60 + parseInt(existingStart.split(':')[1]);
         const existingEndMinutes = parseInt(existingEnd.split(':')[0]) * 60 + parseInt(existingEnd.split(':')[1]);
         
+        // Vérifier s'il y a un conflit temporel
         const hasConflict = (
           (newStartMinutes >= existingStartMinutes && newStartMinutes < existingEndMinutes) ||
           (newEndMinutes > existingStartMinutes && newEndMinutes <= existingEndMinutes) ||
           (newStartMinutes <= existingStartMinutes && newEndMinutes >= existingEndMinutes)
         );
         
-        // Vérifier si l'employé est dans cette tâche
-        const isInTask = task.team_members && task.team_members.includes(employeeId);
-        
-        // Ne pas considérer les anciennes tâches sans team_members comme des conflits
-        const isLegacyTask = !task.team_members;
-        
-        // Ne pas considérer comme conflit si c'est la même tâche (même heure de début)
-        const isSameTask = existingStart === newTaskStart;
-        
-        // Vérifier les conflits pour les tâches avec des employés explicitement assignés
-        if (hasConflict && isInTask && !isSameTask) {
-          console.log(`Employee ${employeeId} is assigned to conflicting task:`, task.title);
-          return true;
-        }
-        
-        // Vérifier si l'employé est simplement assigné à une tâche (même sans conflit temporel)
-        // pour éviter qu'il soit assigné à plusieurs tâches
-        if (isInTask && !isSameTask) {
-          console.log(`Employee ${employeeId} is already assigned to task:`, task.title);
+        // L'employé est occupé SEULEMENT s'il y a un conflit temporel
+        if (hasConflict) {
+          console.log(`🚫 Employé ${employeeId} occupé: conflit temporel avec tâche ${task.id} (${existingStart}-${existingEnd})`);
           return true;
         }
       }
@@ -1310,7 +1394,11 @@ export default function JobCalculatorTab() {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             <TouchableOpacity 
               style={[styles.dateSelector, isDark && styles.dateSelectorDark]}
-              onPress={() => setShowDatePicker(true)}
+              onPress={() => {
+                console.log('🟦 [DEBUG] Calculator - Date picker button pressed');
+                setShowDatePicker(true);
+                console.log('🟦 [DEBUG] Calculator - showDatePicker set to true');
+              }}
             >
               <Calendar color={isDark ? '#60a5fa' : '#3b82f6'} size={20} strokeWidth={2} />
               <Text style={[styles.dateText, isDark && styles.textDark]}>{formatDate(selectedDate)}</Text>
@@ -1484,6 +1572,17 @@ export default function JobCalculatorTab() {
               </View>
             )}
 
+            {timeCalculation.breaksImpact > 0 && (
+              <View style={styles.calculationRow}>
+                <Text style={[styles.calculationLabel, styles.penaltyText, isDark && styles.textDark]}>
+                  Impact des pauses
+                </Text>
+                <Text style={[styles.calculationValue, styles.penaltyText, isDark && styles.textDark]}>
+                  +{Math.floor(timeCalculation.breaksImpact / 60)} min
+                </Text>
+              </View>
+            )}
+
             <View style={[styles.scheduleInfo, isDark && styles.scheduleInfoDark]}>
               <Text style={[styles.scheduleLabel, isDark && styles.textDark]}>Horaires prévus:</Text>
               <Text style={[styles.scheduleTime, isDark && styles.textDark]}>
@@ -1518,167 +1617,54 @@ export default function JobCalculatorTab() {
           </View>
         </View>
 
-        {/* Recurrence Options */}
-        <View style={[styles.section, isDark && styles.sectionDark]}>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, isDark && styles.textDark]}>Options de récurrence</Text>
-            <TouchableOpacity 
-              onPress={() => setShowRecurrenceOptions(!showRecurrenceOptions)}
-              style={[styles.toggleButton, isDark && styles.toggleButtonDark]}
-            >
-              <Text style={[styles.toggleButtonText, isDark && styles.textDark]}>
-                {showRecurrenceOptions ? '▲ Masquer' : '▼ Afficher'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-          
-          {showRecurrenceOptions && (
-            <View>
-              {/* Type de récurrence */}
-              <View style={[styles.recurrenceCard, isDark && styles.cardDark]}>
-                <Text style={[styles.recurrenceLabel, isDark && styles.textDark]}>Type de récurrence</Text>
-                
-                <View style={styles.recurrenceTypeGrid}>
-                  {[
-                    { value: 'none', label: 'Aucune', icon: '📅' },
-                    { value: 'daily', label: 'Quotidienne', icon: '🔄' },
-                    { value: 'weekly', label: 'Hebdomadaire', icon: '📆' },
-                    { value: 'weekdays', label: 'Jours ouvrables', icon: '💼' },
-                    { value: 'custom', label: 'Personnalisée', icon: '⚙️' }
-                  ].map((type) => (
-                    <TouchableOpacity
-                      key={type.value}
-                      style={[
-                        styles.recurrenceTypeButton,
-                        recurrenceType === type.value && styles.recurrenceTypeButtonActive,
-                        isDark && styles.cardDark,
-                        recurrenceType === type.value && isDark && styles.recurrenceTypeButtonActiveDark
-                      ]}
-                      onPress={() => handleRecurrenceTypeChange(type.value as RecurrenceType)}
-                    >
-                      <Text style={[styles.recurrenceTypeIcon, isDark && styles.textDark]}>
-                        {type.icon}
-                      </Text>
-                      <Text style={[
-                        styles.recurrenceTypeLabel,
-                        recurrenceType === type.value && styles.recurrenceTypeLabelActive,
-                        isDark && styles.textDark
-                      ]}>
-                        {type.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-
-              {/* Jours personnalisés (seulement pour custom) */}
-              {recurrenceType === 'custom' && (
-                <View style={[styles.recurrenceCard, isDark && styles.cardDark]}>
-                  <Text style={[styles.recurrenceLabel, isDark && styles.textDark]}>Jours de la semaine</Text>
-                  
-                  <View style={styles.daysGrid}>
-                    {[1, 2, 3, 4, 5, 6, 7].map((day) => (
-                      <TouchableOpacity
-                        key={day}
-                        style={[
-                          styles.dayButton,
-                          recurrenceDays.includes(day) && styles.dayButtonActive,
-                          isDark && styles.dayButtonDark,
-                          recurrenceDays.includes(day) && isDark && styles.dayButtonActiveDark
-                        ]}
-                        onPress={() => toggleRecurrenceDay(day)}
-                      >
-                        <Text style={[
-                          styles.dayButtonText,
-                          recurrenceDays.includes(day) && styles.dayButtonTextActive,
-                          isDark && styles.textDark
-                        ]}>
-                          {getDayName(day)}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-              )}
-
-              {/* Date de fin (optionnelle) */}
-              {recurrenceType !== 'none' && (
-                <View style={[styles.recurrenceCard, isDark && styles.cardDark]}>
-                  <View style={styles.recurrenceEndHeader}>
-                    <Text style={[styles.recurrenceLabel, isDark && styles.textDark]}>Date de fin (optionnelle)</Text>
-                    <TouchableOpacity
-                      style={[styles.endDateButton, isDark && styles.endDateButtonDark]}
-                      onPress={() => setShowRecurrenceEndDatePicker(true)}
-                    >
-                      <Calendar color={isDark ? '#60a5fa' : '#3b82f6'} size={20} strokeWidth={2} />
-                      <Text style={[styles.endDateButtonText, isDark && styles.textDark]}>
-                        {recurrenceEndDate 
-                          ? formatDate(recurrenceEndDate)
-                          : 'Aucune limite'
-                        }
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                  
-                  {recurrenceEndDate && (
-                    <TouchableOpacity
-                      style={[styles.clearEndDateButton, isDark && styles.clearEndDateButtonDark]}
-                      onPress={() => setRecurrenceEndDate(null)}
-                    >
-                      <X color="#ef4444" size={16} strokeWidth={2} />
-                      <Text style={[styles.clearEndDateButtonText, isDark && styles.textDark]}>
-                        Supprimer la date de fin
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              )}
-
-              {/* Aperçu de la récurrence */}
-              {recurrenceType !== 'none' && (
-                <View style={[styles.recurrencePreview, isDark && styles.recurrencePreviewDark]}>
-                  <Text style={[styles.recurrencePreviewLabel, isDark && styles.textDark]}>
-                    Aperçu de la récurrence :
-                  </Text>
-                  <Text style={[styles.recurrencePreviewText, isDark && styles.textDark]}>
-                    {recurrenceType === 'daily' && 'Cette tâche sera répétée tous les jours'}
-                    {recurrenceType === 'weekly' && `Cette tâche sera répétée chaque ${getDayName(selectedDate.getDay() === 0 ? 7 : selectedDate.getDay())}`}
-                    {recurrenceType === 'weekdays' && 'Cette tâche sera répétée du lundi au vendredi'}
-                    {recurrenceType === 'custom' && recurrenceDays.length > 0 && 
-                      `Cette tâche sera répétée : ${recurrenceDays.map(d => getDayName(d)).join(', ')}`}
-                    {recurrenceType === 'custom' && recurrenceDays.length === 0 && 
-                      'Sélectionnez au moins un jour de la semaine'}
-                  </Text>
-                  {recurrenceEndDate && (
-                    <Text style={[styles.recurrencePreviewEnd, isDark && styles.textDark]}>
-                      Jusqu'au {formatDate(recurrenceEndDate)}
-                    </Text>
-                  )}
-                </View>
-              )}
-            </View>
-          )}
-        </View>
-
         {/* Action Buttons */}
         <View style={[styles.actionSection, isDark && styles.sectionDark]}>
-          <TouchableOpacity style={[styles.saveButton, isDark && styles.saveButtonDark]} onPress={startTask}>
+          <TouchableOpacity 
+            style={[styles.saveButton, isDark && styles.saveButtonDark]} 
+            onPress={async () => {
+              console.log('🚀 Bouton "Démarrer la tâche" cliqué');
+              
+              // Validation de base
+              if (!packages || parseInt(packages) <= 0) {
+                Alert.alert('Erreur', 'Veuillez entrer un nombre de colis valide');
+                return;
+              }
+
+              if (teamMembers.length === 0) {
+                Alert.alert('Erreur', 'Veuillez ajouter au moins un membre d\'équipe à la tâche');
+                return;
+              }
+
+              // Créer la tâche directement
+              const endTime = calculateEndTime(selectedStartTime, timeCalculation.totalTime);
+              
+              const task: Task = {
+                id: Date.now().toString(),
+                title: `${currentManager.section} - ${currentManager.initials}`,
+                start_time: selectedStartTime,
+                end_time: endTime,
+                duration: timeCalculation.formattedTime,
+                date: selectedDate.toISOString().split('T')[0],
+                packages: parseInt(packages),
+                team_size: teamMembers.length,
+                manager_section: currentManager.section,
+                manager_initials: currentManager.initials,
+                palette_condition: paletteCondition,
+                team_members: teamMembers.map(member => member.id)
+              };
+              
+              console.log('🎯 Tâche à créer:', task);
+              
+              try {
+                await saveTask(task);
+                console.log('✅ Tâche créée avec succès');
+              } catch (error) {
+                console.error('❌ Erreur lors de la création de la tâche:', error);
+                Alert.alert('Erreur', 'Impossible de créer la tâche');
+              }
+            }}
+          >
             <Text style={[styles.saveButtonText, isDark && styles.textDark]}>Démarrer la tâche</Text>
-          </TouchableOpacity>
-          
-          {recurrenceType !== 'none' && (
-            <TouchableOpacity 
-              style={[styles.recurrenceButton, isDark && styles.recurrenceButtonDark]} 
-              onPress={saveAsRecurringEvent}
-            >
-              <Text style={[styles.recurrenceButtonText, isDark && styles.textDark]}>
-                🔄 Créer événement récurrent
-              </Text>
-            </TouchableOpacity>
-          )}
-          
-          <TouchableOpacity style={[styles.secondaryButton, isDark && styles.secondaryButtonDark]}>
-            <Text style={[styles.secondaryButtonText, isDark && styles.secondaryButtonTextDark]}>Sauvegarder le calcul</Text>
           </TouchableOpacity>
         </View>
 
@@ -1754,67 +1740,6 @@ export default function JobCalculatorTab() {
         minDate={new Date()}
         maxDate={new Date(Date.now() + 84 * 24 * 60 * 60 * 1000)} // 12 weeks from now
       />
-
-      {/* Recurrence End Date Picker */}
-      <DatePickerCalendar
-        visible={showRecurrenceEndDatePicker}
-        onClose={() => setShowRecurrenceEndDatePicker(false)}
-        onDateSelect={(date) => {
-          setRecurrenceEndDate(date);
-          setShowRecurrenceEndDatePicker(false);
-        }}
-        selectedDate={recurrenceEndDate || new Date()}
-        minDate={selectedDate} // La date de fin ne peut pas être avant la date de début
-        maxDate={new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)} // 1 an maximum
-      />
-
-      {/* Task Confirmation Modal */}
-      <Modal
-        visible={showTaskModal}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowTaskModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.taskModal}>
-            <View style={styles.successIcon}>
-              <Clock color="#10b981" size={32} strokeWidth={2} />
-            </View>
-            
-            <Text style={styles.successTitle}>Tâche planifiée !</Text>
-            <Text style={styles.successMessage}>
-              La tâche "{currentManager.section} - {currentManager.initials}" a été ajoutée au calendrier pour le {formatDate(selectedDate)} de {selectedStartTime} à {formatEndTimeForDisplay(selectedStartTime, timeCalculation.totalTime)}.
-            </Text>
-            
-            <View style={styles.taskSummary}>
-              <Text style={styles.summaryItem}>📦 {packages} colis à traiter</Text>
-              <Text style={styles.summaryItem}>👥 {teamMembers.length} membre{teamMembers.length > 1 ? 's' : ''} d'équipe</Text>
-              <Text style={styles.summaryItem}>⏱️ Durée: {timeCalculation.formattedTime}</Text>
-            </View>
-            
-            <View style={styles.modalActions}>
-              <TouchableOpacity 
-                style={styles.modalButton}
-                onPress={resetForm}
-              >
-                <Text style={styles.modalButtonText}>Nouvelle tâche</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={styles.modalButton}
-                onPress={() => setShowTaskModal(false)}
-              >
-                <Text style={styles.modalButtonText}>Continuer</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.modalButton, styles.primaryModalButton]}
-                onPress={goToCalendar}
-              >
-                <Text style={styles.primaryModalButtonText}>Voir le calendrier</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
 
       {/* Time Picker Modal */}
       <Modal
@@ -2003,6 +1928,197 @@ export default function JobCalculatorTab() {
         </View>
       </Modal>
 
+      {/* Task Confirmation Modal */}
+      <Modal
+        visible={showTaskConfirmationModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={cancelTaskCreation}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, isDark && styles.modalContentDark]}>
+            <View style={[styles.modalHeader, isDark && styles.modalHeaderDark]}>
+              <Text style={[styles.modalTitle, isDark && styles.modalTitleDark]}>✅ Confirmer la création</Text>
+              <TouchableOpacity onPress={cancelTaskCreation}>
+                <X color={isDark ? "#a1a1aa" : "#6b7280"} size={24} strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.confirmationContent}>
+              <View style={styles.confirmationIcon}>
+                <CheckCircle color="#10b981" size={32} strokeWidth={2} />
+              </View>
+              
+              <Text style={[styles.confirmationTitle, isDark && styles.confirmationTitleDark]}>
+                Créer cette tâche ?
+              </Text>
+              
+              {taskToConfirm && (
+                <View style={styles.taskDetails}>
+                  <View style={styles.taskDetailRow}>
+                    <Text style={[styles.taskDetailLabel, isDark && styles.taskDetailLabelDark]}>Titre :</Text>
+                    <Text style={[styles.taskDetailValue, isDark && styles.taskDetailValueDark]}>{taskToConfirm.title}</Text>
+                  </View>
+                  
+                  <View style={styles.taskDetailRow}>
+                    <Text style={[styles.taskDetailLabel, isDark && styles.taskDetailLabelDark]}>Date :</Text>
+                    <Text style={[styles.taskDetailValue, isDark && styles.taskDetailValueDark]}>
+                      {new Date(taskToConfirm.date).toLocaleDateString('fr-FR', { 
+                        weekday: 'long', 
+                        year: 'numeric', 
+                        month: 'long', 
+                        day: 'numeric' 
+                      })}
+                    </Text>
+                  </View>
+                  
+                  <View style={styles.taskDetailRow}>
+                    <Text style={[styles.taskDetailLabel, isDark && styles.taskDetailLabelDark]}>Heure :</Text>
+                    <Text style={[styles.taskDetailValue, isDark && styles.taskDetailValueDark]}>
+                      {taskToConfirm.start_time} - {taskToConfirm.end_time}
+                    </Text>
+                  </View>
+                  
+                  <View style={styles.taskDetailRow}>
+                    <Text style={[styles.taskDetailLabel, isDark && styles.taskDetailLabelDark]}>Colis :</Text>
+                    <Text style={[styles.taskDetailValue, isDark && styles.taskDetailValueDark]}>{taskToConfirm.packages}</Text>
+                  </View>
+                  
+                  <View style={styles.taskDetailRow}>
+                    <Text style={[styles.taskDetailLabel, isDark && styles.taskDetailLabelDark]}>Équipe :</Text>
+                    <Text style={[styles.taskDetailValue, isDark && styles.taskDetailValueDark]}>
+                      {taskToConfirm.team_size} employé{taskToConfirm.team_size > 1 ? 's' : ''}
+                    </Text>
+                  </View>
+                  
+                  <View style={styles.taskDetailRow}>
+                    <Text style={[styles.taskDetailLabel, isDark && styles.taskDetailLabelDark]}>Durée :</Text>
+                    <Text style={[styles.taskDetailValue, isDark && styles.taskDetailValueDark]}>{taskToConfirm.duration}</Text>
+                  </View>
+                  
+                  <View style={styles.taskDetailRow}>
+                    <Text style={[styles.taskDetailLabel, isDark && styles.taskDetailLabelDark]}>État palette :</Text>
+                    <Text style={[styles.taskDetailValue, isDark && styles.taskDetailValueDark]}>
+                      {taskToConfirm.palette_condition ? '✅ Bon état' : '⚠️ Mauvais état'}
+                    </Text>
+                  </View>
+                </View>
+              )}
+              
+              <Text style={[styles.confirmationMessage, isDark && styles.confirmationMessageDark]}>
+                Cette tâche sera ajoutée à votre planning et les équipiers actifs seront mis à jour.
+              </Text>
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity 
+                style={[styles.modalButton, styles.secondaryButton]}
+                onPress={cancelTaskCreation}
+              >
+                <Text style={styles.secondaryButtonText}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.modalButton, styles.primaryButton]}
+                onPress={confirmTaskCreation}
+              >
+                <Text style={styles.primaryButtonText}>Créer la tâche</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Working Hours Alert Modal */}
+      <Modal
+        visible={showWorkingHoursAlertModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={closeWorkingHoursAlert}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, isDark && styles.modalContentDark]}>
+            <View style={[styles.modalHeader, isDark && styles.modalHeaderDark]}>
+              <Text style={[styles.modalTitle, isDark && styles.modalTitleDark]}>⚠️ Heure hors plage</Text>
+              <TouchableOpacity onPress={closeWorkingHoursAlert}>
+                <X color={isDark ? "#a1a1aa" : "#6b7280"} size={24} strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.workingHoursAlertContent}>
+              <View style={styles.workingHoursAlertIcon}>
+                <Clock color="#ef4444" size={32} strokeWidth={2} />
+              </View>
+              
+              <Text style={[styles.workingHoursAlertTitle, isDark && styles.workingHoursAlertTitleDark]}>
+                ⚠️ Heure hors des horaires de travail
+              </Text>
+              
+              {workingHoursAlertData && (
+                <View style={styles.workingHoursAlertDetails}>
+                  <View style={styles.workingHoursAlertRow}>
+                    <Text style={[styles.workingHoursAlertLabel, isDark && styles.workingHoursAlertLabelDark]}>
+                      Heure de début :
+                    </Text>
+                    <Text style={[styles.workingHoursAlertValue, styles.workingHoursAlertValueError, isDark && styles.workingHoursAlertValueErrorDark]}>
+                      {workingHoursAlertData.selectedTime}
+                    </Text>
+                  </View>
+                  
+                  {workingHoursAlertData.endTime && (
+                    <View style={styles.workingHoursAlertRow}>
+                      <Text style={[styles.workingHoursAlertLabel, isDark && styles.workingHoursAlertLabelDark]}>
+                        Heure de fin :
+                      </Text>
+                      <Text style={[
+                        styles.workingHoursAlertValue, 
+                        workingHoursAlertData.isEndTimeInvalid ? styles.workingHoursAlertValueError : styles.workingHoursAlertValueSuccess,
+                        isDark && (workingHoursAlertData.isEndTimeInvalid ? styles.workingHoursAlertValueErrorDark : styles.workingHoursAlertValueSuccessDark)
+                      ]}>
+                        {workingHoursAlertData.endTime}
+                      </Text>
+                    </View>
+                  )}
+                  
+                  <View style={styles.workingHoursAlertRow}>
+                    <Text style={[styles.workingHoursAlertLabel, isDark && styles.workingHoursAlertLabelDark]}>
+                      Horaires de travail :
+                    </Text>
+                    <Text style={[styles.workingHoursAlertValue, isDark && styles.workingHoursAlertValueDark]}>
+                      {workingHoursAlertData.workingStart} - {workingHoursAlertData.workingEnd}
+                    </Text>
+                  </View>
+                </View>
+              )}
+              
+              <Text style={[styles.workingHoursAlertMessage, isDark && styles.workingHoursAlertMessageDark]}>
+                ❌ Impossible de créer une tâche hors des heures de travail.
+              </Text>
+              <Text style={[styles.workingHoursAlertMessage, isDark && styles.workingHoursAlertMessageDark]}>
+                {workingHoursAlertData?.isEndTimeInvalid 
+                  ? `La tâche se termine après ${workingHoursAlertData.workingEnd}. Veuillez réduire le nombre de colis ou changer l'heure de début.`
+                  : `Veuillez sélectionner une heure de début entre ${workingHoursAlertData?.workingStart} et ${workingHoursAlertData?.workingEnd}, ou annuler la création de la tâche.`
+                }
+              </Text>
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity 
+                style={[styles.modalButton, styles.secondaryButton]}
+                onPress={closeWorkingHoursAlert}
+              >
+                <Text style={styles.secondaryButtonText}>❌ Annuler la tâche</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.modalButton, styles.primaryButton]}
+                onPress={openTimePickerFromAlert}
+              >
+                <Text style={styles.primaryButtonText}>🕐 Changer l'heure</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Employee Selector Modal */}
       <Modal
         visible={showEmployeeSelector}
@@ -2020,6 +2136,27 @@ export default function JobCalculatorTab() {
             </View>
             <View style={[styles.modalDivider, isDark && styles.modalDividerDark]} />
             <ScrollView style={styles.employeeList} contentContainerStyle={{flexGrow:1}} showsVerticalScrollIndicator={false}>
+              {/* Debug info */}
+              <View style={{ padding: 10, backgroundColor: '#f3f4f6', margin: 10, borderRadius: 8 }}>
+                <Text style={{ fontSize: 12, color: '#6b7280' }}>
+                  Debug: profile.section={profile?.section}, loading={employeesLoading.toString()}, count={allEmployees?.length || 0}
+                </Text>
+              </View>
+              <View style={{ padding: 10, backgroundColor: '#f3f4f6', margin: 10, borderRadius: 8 }}>
+                <Text style={{ fontSize: 12, color: '#6b7280' }}>
+                  Debug : profile = {profile ? JSON.stringify({id: profile.id, section: profile.section, full_name: profile.full_name}) : 'null'}
+                </Text>
+                <TouchableOpacity
+                  style={{ backgroundColor: '#3b82f6', padding: 6, borderRadius: 6, marginTop: 6, alignSelf: 'flex-start' }}
+                  onPress={() => {
+                    console.log('🟦 [DEBUG] profile =', profile);
+                    console.log('🟦 [DEBUG] allEmployees =', allEmployees);
+                  }}
+                >
+                  <Text style={{ color: 'white', fontSize: 12 }}>Afficher dans la console</Text>
+                </TouchableOpacity>
+              </View>
+              
               {employeesLoading ? (
                 <View style={{ padding: 20, alignItems: 'center' }}>
                   <Text style={{ color: '#6b7280' }}>Chargement des employés...</Text>
@@ -2120,6 +2257,10 @@ export default function JobCalculatorTab() {
                 <View style={{ padding: 20, alignItems: 'center' }}>
                   <Text style={{ color: '#6b7280', textAlign: 'center' }}>
                     Aucun employé disponible.{'\n'}
+                    {profile?.section 
+                      ? `Section actuelle: ${profile.section}`
+                      : 'Aucune section définie pour votre profil'
+                    }{'\n'}
                     Ajoutez des employés dans la page "Équipe Rayon".
                   </Text>
                 </View>
@@ -2152,9 +2293,31 @@ export default function JobCalculatorTab() {
         {showDevTools && (
           <>
             {/* Bloc infos stats colis déplacé ici */}
-            <View style={{ backgroundColor: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#e5e7eb', padding: 8, marginTop: 12, marginBottom: 12 }}>
-              <Text style={{fontSize: 14, fontWeight: 'bold', color: '#1f2937'}}>Colis du {formatDate(selectedDate)} : {totalColisJour}</Text>
-              <Text style={{fontSize: 13, color: '#374151'}}>Colis traités : {colisTraitesJour} ({pourcentageColisTraites}%)</Text>
+            <View style={{ backgroundColor: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#e5e7eb', padding: 12, marginTop: 12, marginBottom: 12 }}>
+              <Text style={{fontSize: 16, fontWeight: 'bold', color: '#1f2937', marginBottom: 8}}>
+                📦 Statistiques du {formatDate(selectedDate)}
+              </Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <Text style={{fontSize: 14, color: '#374151'}}>Total de la journée:</Text>
+                <Text style={{fontSize: 16, fontWeight: '600', color: '#1f2937'}}>{totalColisJour} colis</Text>
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <Text style={{fontSize: 14, color: '#374151'}}>Colis traités:</Text>
+                <Text style={{fontSize: 16, fontWeight: '600', color: '#3b82f6'}}>{colisTraitesJour} colis</Text>
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <Text style={{fontSize: 14, color: '#374151'}}>Progression:</Text>
+                <Text style={{fontSize: 16, fontWeight: '600', color: '#10b981'}}>{pourcentageColisTraites}%</Text>
+              </View>
+              <View style={{ backgroundColor: '#f3f4f6', borderRadius: 4, height: 8, marginTop: 8 }}>
+                <View style={{ 
+                  backgroundColor: '#3b82f6', 
+                  borderRadius: 4, 
+                  height: 8, 
+                  width: `${pourcentageColisTraites}%`,
+                  maxWidth: '100%'
+                }} />
+              </View>
             </View>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-start' }}>
               <TouchableOpacity 
@@ -2283,6 +2446,35 @@ export default function JobCalculatorTab() {
           </>
         )}
       </View>
+
+      {/* Bouton pour choisir la date de fin de récurrence */}
+      <TouchableOpacity
+        style={[styles.endDateButton, isDark && styles.endDateButtonDark]}
+        onPress={() => setShowEndDatePicker(true)}
+      >
+        <Text style={styles.endDateButtonText}>
+          {endDate ? formatDate(endDate) : 'Choisir une date de fin'}
+        </Text>
+      </TouchableOpacity>
+
+      <Modal
+        visible={showEndDatePicker}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowEndDatePicker(false)}
+      >
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)', zIndex: 999 }}>
+          <View style={{ backgroundColor: isDark ? '#18181b' : '#fff', borderRadius: 16, padding: 16, elevation: 10 }}>
+            <DatePickerCalendar
+              visible={true}
+              onClose={() => setShowEndDatePicker(false)}
+              onDateSelect={(date) => { setEndDate(date); setShowEndDatePicker(false); }}
+              selectedDate={endDate || new Date()}
+              minDate={selectedDate}
+            />
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -3598,5 +3790,157 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#ffffff',
+  },
+  
+  // Styles pour la popup de confirmation de tâche
+  confirmationContent: {
+    alignItems: 'center',
+    padding: 20,
+  },
+  confirmationIcon: {
+    backgroundColor: '#f0fdf4',
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 16,
+  },
+  confirmationTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  confirmationTitleDark: {
+    color: '#ffffff',
+  },
+  taskDetails: {
+    width: '100%',
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  taskDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  taskDetailLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6b7280',
+    flex: 1,
+  },
+  taskDetailLabelDark: {
+    color: '#a1a1aa',
+  },
+  taskDetailValue: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#1a1a1a',
+    flex: 2,
+    textAlign: 'right',
+  },
+  taskDetailValueDark: {
+    color: '#ffffff',
+  },
+  confirmationMessage: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  confirmationMessageDark: {
+    color: '#a1a1aa',
+  },
+  secondaryButton: {
+    backgroundColor: '#f3f4f6',
+    borderColor: '#d1d5db',
+  },
+  secondaryButtonText: {
+    color: '#6b7280',
+    fontWeight: '600',
+  },
+  
+  // Styles pour la popup d'alerte des horaires de travail
+  workingHoursAlertContent: {
+    alignItems: 'center',
+    padding: 20,
+  },
+  workingHoursAlertIcon: {
+    backgroundColor: '#fef2f2',
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 16,
+  },
+  workingHoursAlertTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  workingHoursAlertTitleDark: {
+    color: '#ffffff',
+  },
+  workingHoursAlertDetails: {
+    width: '100%',
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  workingHoursAlertRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  workingHoursAlertLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6b7280',
+    flex: 1,
+  },
+  workingHoursAlertLabelDark: {
+    color: '#a1a1aa',
+  },
+  workingHoursAlertValue: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#1a1a1a',
+    flex: 2,
+    textAlign: 'right',
+  },
+  workingHoursAlertValueDark: {
+    color: '#ffffff',
+  },
+  workingHoursAlertValueError: {
+    color: '#ef4444',
+    fontWeight: '600',
+  },
+  workingHoursAlertValueErrorDark: {
+    color: '#f87171',
+  },
+  workingHoursAlertValueSuccess: {
+    color: '#10b981',
+    fontWeight: '600',
+  },
+  workingHoursAlertValueSuccessDark: {
+    color: '#34d399',
+  },
+  workingHoursAlertMessage: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  workingHoursAlertMessageDark: {
+    color: '#a1a1aa',
   },
 });

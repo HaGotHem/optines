@@ -275,16 +275,19 @@ const styles = StyleSheet.create({
   },
   statsContainer: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     paddingHorizontal: 24,
     gap: 16,
     marginBottom: 16,
+    justifyContent: 'space-between',
   },
   statCard: {
-    flex: 1,
+    width: '48%', // Pour créer une grille 2x2
     padding: 20,
     borderRadius: 16,
     alignItems: 'center',
     minHeight: 120,
+    marginBottom: 16, // Espacement vertical entre les lignes
   },
   statValue: {
     fontSize: 24,

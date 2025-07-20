@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { useSupabaseWorkingHours } from './useSupabaseWorkingHours';
 
 interface Task {
   id: string;
@@ -15,6 +16,7 @@ interface Task {
   palette_condition: boolean;
   is_pinned: boolean;
   is_completed: boolean;
+  is_deleted: boolean;
   manager_id: string;
   created_at: string;
   updated_at: string;
@@ -48,27 +50,38 @@ export const useSupabaseTasks = (filters: TaskFilters = {}) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Hook pour les horaires de travail
+  const { isTimeRangeWithinWorkingHours, workingHours } = useSupabaseWorkingHours({ 
+    store_id: filters.store_id || 1 
+  });
 
   useEffect(() => {
+    console.log('🔄 [HOOK] useEffect déclenché - filtres changés:', filters);
     loadTasks();
-  }, [filters.managerId, filters.date]);
+  }, [filters.managerId, filters.date, filters.isCompleted, filters.isPinned]);
 
   const loadTasks = async () => {
     try {
       setIsLoading(true);
       setError(null);
       
+      console.log('🔄 [HOOK] Chargement des tâches avec filtres:', filters);
+      
       let query = supabase
         .from('scheduled_tasks')
         .select('*')
+        // .eq('is_deleted', false) // Temporairement commenté car la colonne n'existe pas
         .order('created_at', { ascending: false });
 
       if (filters.managerId) {
         query = query.eq('manager_id', filters.managerId);
+        console.log('🔄 [HOOK] Filtre manager_id ajouté:', filters.managerId);
       }
       
       if (filters.date) {
         query = query.eq('date', filters.date);
+        console.log('🔄 [HOOK] Filtre date ajouté:', filters.date);
       }
       
       if (filters.isCompleted !== undefined) {
@@ -80,9 +93,16 @@ export const useSupabaseTasks = (filters: TaskFilters = {}) => {
       }
 
       const { data, error } = await query;
+      
+      console.log('🔄 [HOOK] Résultat de la requête:', { 
+        data: data?.length || 0, 
+        error,
+        taskIds: data?.map(t => t.id) || []
+      });
 
       if (error) throw error;
       
+      console.log('🔄 [HOOK] Mise à jour de l\'état avec', data?.length || 0, 'tâches');
       setTasks(data || []);
     } catch (err) {
       console.error('Erreur lors du chargement des tâches:', err);
@@ -95,6 +115,16 @@ export const useSupabaseTasks = (filters: TaskFilters = {}) => {
   const createTask = async (taskData: TaskInput) => {
     try {
       setError(null);
+      
+      console.log('🔄 [HOOK] Création de tâche:', taskData);
+      
+      // Validation des horaires de travail
+      if (workingHours && !isTimeRangeWithinWorkingHours(taskData.start_time, taskData.end_time)) {
+        const errorMessage = `❌ Impossible de créer la tâche : les horaires (${taskData.start_time} - ${taskData.end_time}) sont en dehors des horaires de travail du magasin (${workingHours.start_time} - ${workingHours.end_time})`;
+        console.error(errorMessage);
+        setError(errorMessage);
+        return { success: false, error: errorMessage };
+      }
       
       // Ajouter automatiquement le store_id si pas présent
       const taskDataWithStore = {
@@ -110,7 +140,16 @@ export const useSupabaseTasks = (filters: TaskFilters = {}) => {
 
       if (error) throw error;
       
+      console.log('🔄 [HOOK] Tâche créée avec succès:', data);
+      
       setTasks(prev => [data, ...prev]);
+      
+      // Forcer le rechargement des tâches pour s'assurer que tout est synchronisé
+      setTimeout(() => {
+        console.log('🔄 [HOOK] Rechargement forcé après création');
+        loadTasks();
+      }, 500);
+      
       return { success: true, task: data };
     } catch (err) {
       console.error('Erreur lors de la création de la tâche:', err);
@@ -150,15 +189,35 @@ export const useSupabaseTasks = (filters: TaskFilters = {}) => {
     try {
       setError(null);
       
-      const { error } = await supabase
+      console.log('🔄 [HOOK] Tentative de suppression de la tâche:', id);
+      
+      // Suppression physique temporaire car la colonne is_deleted n'existe pas
+      const { data, error } = await supabase
         .from('scheduled_tasks')
         .delete()
-        .eq('id', id);
+        .eq('id', id)
+        .select()
+        .single();
 
       if (error) throw error;
       
-      setTasks(prev => prev.filter(task => task.id !== id));
-      return { success: true };
+      console.log('🔄 [HOOK] Suppression réussie dans Supabase:', data);
+      
+      // Retirer la tâche de la liste locale
+      setTasks(prev => {
+        const filtered = prev.filter(task => task.id !== id);
+        console.log('🔄 [HOOK] Tâches après suppression locale:', filtered.length);
+        return filtered;
+      });
+      
+      // Forcer un rechargement complet après un délai pour s'assurer de la synchronisation
+      setTimeout(() => {
+        console.log('🔄 [HOOK] Rechargement forcé après suppression');
+        loadTasks();
+      }, 1000);
+      
+      console.log('🔄 [HOOK] Tâche supprimée avec succès:', data);
+      return { success: true, task: data };
     } catch (err) {
       console.error('Erreur lors de la suppression de la tâche:', err);
       const errorMessage = err instanceof Error ? err.message : 'Erreur inconnue';
@@ -268,6 +327,46 @@ export const useSupabaseTasks = (filters: TaskFilters = {}) => {
     };
   };
 
+  // ✅ NOUVEAU : Fonction optimisée pour calculer les colis traités en temps réel
+  const getPackagesProgress = (date: string) => {
+    const dateTasks = tasks.filter(t => t.date === date);
+    const currentTime = new Date();
+    
+    let totalPackages = 0;
+    let treatedPackages = 0;
+    
+    dateTasks.forEach(task => {
+      totalPackages += task.packages || 0;
+      
+      if (task.is_completed) {
+        // Tâche terminée : 100% des colis
+        treatedPackages += task.packages || 0;
+      } else {
+        const start = new Date(`${task.date}T${task.start_time}`);
+        const end = new Date(`${task.date}T${task.end_time}`);
+        
+        if (currentTime >= start && currentTime < end) {
+          // Tâche en cours : proportionnel au temps écoulé
+          const totalDuration = end.getTime() - start.getTime();
+          const elapsedTime = currentTime.getTime() - start.getTime();
+          const progressPercentage = Math.min(100, Math.max(0, (elapsedTime / totalDuration) * 100));
+          const estimatedPackages = Math.floor((task.packages || 0) * (progressPercentage / 100));
+          treatedPackages += estimatedPackages;
+        } else if (currentTime >= end) {
+          // Tâche terminée mais pas marquée : compter tous les colis
+          treatedPackages += task.packages || 0;
+        }
+        // Tâches futures : 0 colis traités
+      }
+    });
+    
+    return {
+      totalPackages,
+      treatedPackages,
+      progressPercentage: totalPackages > 0 ? Math.round((treatedPackages / totalPackages) * 100) : 0
+    };
+  };
+
   const toggleTaskPin = async (id: string) => {
     const task = tasks.find(t => t.id === id);
     if (!task) return { success: false, error: 'Tâche non trouvée' };
@@ -323,6 +422,56 @@ export const useSupabaseTasks = (filters: TaskFilters = {}) => {
     return result;
   };
 
+  // Fonction pour restaurer une tâche supprimée (utile pour l'administration)
+  const restoreTask = async (id: string) => {
+    try {
+      setError(null);
+      
+      const { data, error } = await supabase
+        .from('scheduled_tasks')
+        .update({ is_deleted: false, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      
+      // Recharger les tâches pour inclure la tâche restaurée
+      await loadTasks();
+      
+      console.log('🔄 [HOOK] Tâche restaurée:', data);
+      return { success: true, task: data };
+    } catch (err) {
+      console.error('Erreur lors de la restauration de la tâche:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Erreur inconnue';
+      setError(errorMessage);
+      return { success: false, error: errorMessage };
+    }
+  };
+
+  // Fonction pour récupérer toutes les tâches (y compris supprimées) - pour l'administration
+  const getAllTasks = async (includeDeleted: boolean = false) => {
+    try {
+      let query = supabase
+        .from('scheduled_tasks')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!includeDeleted) {
+        query = query.eq('is_deleted', false);
+      }
+
+      const { data, error } = await query;
+      
+      if (error) throw error;
+      return { success: true, tasks: data || [] };
+    } catch (err) {
+      console.error('Erreur lors de la récupération de toutes les tâches:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Erreur inconnue';
+      return { success: false, error: errorMessage };
+    }
+  };
+
   return {
     tasks,
     isLoading,
@@ -330,6 +479,8 @@ export const useSupabaseTasks = (filters: TaskFilters = {}) => {
     createTask,
     updateTask,
     deleteTask,
+    restoreTask,
+    getAllTasks,
     getTaskById,
     getTasksByDate,
     completeTask,
@@ -337,6 +488,7 @@ export const useSupabaseTasks = (filters: TaskFilters = {}) => {
     unassignTeamMemberFromTask,
     getTaskAssignments,
     getLocalStats,
+    getPackagesProgress,
     toggleTaskPin,
     toggleTaskComplete,
     refresh: loadTasks

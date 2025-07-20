@@ -44,8 +44,8 @@ export class PerformanceService {
     const completedTasks = todayTasks.filter(task => task.is_completed);
     const packagesProcessed = completedTasks.reduce((sum, task) => sum + (task.packages || 0), 0);
     
-    // Calculer la performance (pourcentage de tâches complétées)
-    const performance = todayTasks.length > 0 ? Math.round((completedTasks.length / todayTasks.length) * 100) : 0;
+    // Calculer la performance (pourcentage de colis traités vs total)
+    const performance = totalPackages > 0 ? Math.round((packagesProcessed / totalPackages) * 100) : 0;
     
     // Calculer la taille moyenne de l'équipe
     const averageTeamSize = todayTasks.length > 0 
@@ -162,67 +162,6 @@ export class PerformanceService {
       totalManagers: allManagersPerformance.length,
       totalAlerts,
       averageRemainingTime
-    };
-  }
-
-  /**
-   * Génère des données de performance simulées pour les managers qui n'ont pas de tâches
-   */
-  static generateMockManagerPerformance(managerId: string, managerName: string, section: string): ManagerPerformance {
-    // Données simulées pour les managers sans tâches réelles
-    const mockData = {
-      'marie-dubois': { packages: 485, total: 550, performance: 92, team: 3, reinforcement: 1 },
-      'pierre-martin': { packages: 312, total: 450, performance: 76, team: 2, reinforcement: 0 },
-      'sophie-laurent': { packages: 523, total: 550, performance: 95, team: 2, reinforcement: 1 },
-      'thomas-durand': { packages: 187, total: 400, performance: 68, team: 3, reinforcement: 0 },
-      'julie-moreau': { packages: 456, total: 500, performance: 89, team: 2, reinforcement: 1 },
-      'antoine-leroy': { packages: 398, total: 480, performance: 85, team: 3, reinforcement: 0 },
-      'camille-rousseau': { packages: 467, total: 520, performance: 91, team: 2, reinforcement: 1 },
-      'lucas-bernard': { packages: 334, total: 430, performance: 78, team: 3, reinforcement: 0 },
-      'emma-petit': { packages: 445, total: 500, performance: 88, team: 2, reinforcement: 1 },
-      'nicolas-garnier': { packages: 378, total: 460, performance: 82, team: 3, reinforcement: 0 }
-    };
-
-    const key = managerName.toLowerCase().replace(' ', '-');
-    const data = mockData[key as keyof typeof mockData] || { packages: 300, total: 400, performance: 75, team: 2, reinforcement: 0 };
-
-    let status: 'excellent' | 'good' | 'warning' | 'critical';
-    if (data.performance >= 90) status = 'excellent';
-    else if (data.performance >= 75) status = 'good';
-    else if (data.performance >= 60) status = 'warning';
-    else status = 'critical';
-
-    const remainingPackages = data.total - data.packages;
-    const baseTimePerPackage = 40; // secondes par colis
-    const extraMembers = data.team - 1;
-    const reinforcementPenalty = data.reinforcement > 0 ? 15 : 0;
-    const additionalMinutes = (extraMembers * 30) + reinforcementPenalty;
-    const baseTimeSeconds = remainingPackages * baseTimePerPackage;
-    const totalTimeSeconds = baseTimeSeconds + (additionalMinutes * 60);
-    const remainingTimeMinutes = Math.floor(totalTimeSeconds / 60);
-
-    const alerts = data.performance < 70 ? (data.performance < 60 ? 3 : 2) : (data.performance < 85 ? 1 : 0);
-    
-    let trend: 'up' | 'down' | 'stable';
-    if (data.performance >= 85) trend = 'up';
-    else if (data.performance <= 65) trend = 'down';
-    else trend = 'stable';
-
-    return {
-      id: managerId,
-      name: managerName,
-      section,
-      packagesProcessed: data.packages,
-      totalPackages: data.total,
-      performance: data.performance,
-      teamSize: data.team,
-      reinforcementWorker: data.reinforcement,
-      status,
-      alerts,
-      trend,
-      remainingTimeMinutes,
-      tasksCompleted: Math.floor(data.performance / 25), // Simulation
-      totalTasks: 4 // Simulation
     };
   }
 } 

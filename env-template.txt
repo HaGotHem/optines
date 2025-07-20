@@ -1,8 +1,0 @@
-# Configuration Supabase
-# Remplacez [VOTRE_CLE_ANON] par la clé anon publique de votre projet
-
-EXPO_PUBLIC_SUPABASE_URL=https://vqwgnvrhcaosnjczuwth.supabase.co
-EXPO_PUBLIC_SUPABASE_ANON_KEY=[VOTRE_CLE_ANON]
-
-# Note: La clé anon publique se trouve dans votre dashboard Supabase :
-# Settings > API > Project API keys > anon public 

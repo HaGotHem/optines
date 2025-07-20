@@ -145,6 +145,27 @@ CREATE TABLE IF NOT EXISTS user_preferences (
 CREATE INDEX IF NOT EXISTS idx_user_preferences_user_id ON user_preferences(user_id);
 
 -- =====================================================
+-- TABLE: alerts (Alertes de retard)
+-- =====================================================
+CREATE TABLE IF NOT EXISTS alerts (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    task_id UUID NOT NULL REFERENCES scheduled_tasks(id) ON DELETE CASCADE,
+    manager_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    message TEXT NOT NULL,
+    severity VARCHAR(20) DEFAULT 'warning' CHECK (severity IN ('info', 'warning', 'critical')),
+    is_read BOOLEAN DEFAULT false,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Index pour optimiser les requêtes
+CREATE INDEX IF NOT EXISTS idx_alerts_task_id ON alerts(task_id);
+CREATE INDEX IF NOT EXISTS idx_alerts_manager_id ON alerts(manager_id);
+CREATE INDEX IF NOT EXISTS idx_alerts_severity ON alerts(severity);
+CREATE INDEX IF NOT EXISTS idx_alerts_read ON alerts(is_read);
+CREATE INDEX IF NOT EXISTS idx_alerts_created_at ON alerts(created_at);
+
+-- =====================================================
 -- TABLE: scheduled_events (Événements récurrents)
 -- =====================================================
 CREATE TABLE IF NOT EXISTS scheduled_events (

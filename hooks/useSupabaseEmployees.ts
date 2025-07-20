@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
 
 interface Employee {
   id: number;
@@ -46,8 +47,6 @@ interface EmployeeFilters {
   manager_id?: number;
 }
 
-const API_BASE_URL = 'http://localhost:3001/api';
-
 export const useSupabaseEmployees = (filters?: EmployeeFilters) => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -62,24 +61,51 @@ export const useSupabaseEmployees = (filters?: EmployeeFilters) => {
       setIsLoading(true);
       setError(null);
       
-      // Construire l'URL avec les filtres
-      const queryParams = new URLSearchParams();
-      if (filters?.store_id) queryParams.append('store_id', filters.store_id.toString());
-      if (filters?.section) queryParams.append('section', filters.section);
-      if (filters?.manager_id) queryParams.append('manager_id', filters.manager_id.toString());
+      console.log('🔍 useSupabaseEmployees - Loading employees with filters:', filters);
       
-      const url = `${API_BASE_URL}/employees${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
-      
-      const response = await fetch(url);
-      const data = await response.json();
+      // Vérifier si la table team_members existe
+      const { data: tableExists, error: tableError } = await supabase
+        .from('team_members')
+        .select('id')
+        .limit(1);
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Erreur lors du chargement des employés');
+      if (tableError && tableError.message.includes('does not exist')) {
+        console.log('⚠️ useSupabaseEmployees - Table team_members n\'existe pas encore');
+        setEmployees([]);
+        return;
+      }
+
+      let query = supabase
+        .from('team_members')
+        .select('*');
+
+      // Appliquer les filtres
+      if (filters?.store_id) {
+        query = query.eq('store_id', filters.store_id);
       }
       
-      setEmployees(data.employees || []);
+      if (filters?.section) {
+        query = query.eq('section', filters.section);
+      }
+      
+      if (filters?.manager_id) {
+        query = query.eq('manager_id', filters.manager_id);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        throw error;
+      }
+      
+      console.log('✅ useSupabaseEmployees - Employees loaded:', {
+        count: data ? data.length : 0,
+        employees: data ? data.map(e => ({id: e.id, name: e.name, section: e.section})) : []
+      });
+      
+      setEmployees(data || []);
     } catch (err) {
-      console.error('Erreur lors du chargement des employés:', err);
+      console.error('❌ useSupabaseEmployees - Error loading employees:', err);
       setError(err instanceof Error ? err.message : 'Erreur inconnue');
     } finally {
       setIsLoading(false);
@@ -90,25 +116,25 @@ export const useSupabaseEmployees = (filters?: EmployeeFilters) => {
     try {
       setError(null);
       
-      const response = await fetch(`${API_BASE_URL}/employees`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(employeeData),
-      });
+      console.log('🔍 useSupabaseEmployees - Creating employee:', employeeData);
+      
+      const { data, error } = await supabase
+        .from('team_members')
+        .insert([employeeData])
+        .select()
+        .single();
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Erreur lors de la création de l\'employé');
+      if (error) {
+        throw error;
       }
+      
+      console.log('✅ useSupabaseEmployees - Employee created:', data);
       
       // Recharger la liste des employés
       await loadEmployees();
-      return { success: true, employee: data.employee };
+      return { success: true, employee: data };
     } catch (err) {
-      console.error('Erreur lors de la création de l\'employé:', err);
+      console.error('❌ useSupabaseEmployees - Error creating employee:', err);
       const errorMessage = err instanceof Error ? err.message : 'Erreur inconnue';
       setError(errorMessage);
       return { success: false, error: errorMessage };
@@ -119,25 +145,26 @@ export const useSupabaseEmployees = (filters?: EmployeeFilters) => {
     try {
       setError(null);
       
-      const response = await fetch(`${API_BASE_URL}/employees/${id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(updates),
-      });
+      console.log('🔍 useSupabaseEmployees - Updating employee:', { id, updates });
+      
+      const { data, error } = await supabase
+        .from('team_members')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Erreur lors de la mise à jour de l\'employé');
+      if (error) {
+        throw error;
       }
+      
+      console.log('✅ useSupabaseEmployees - Employee updated:', data);
       
       // Recharger la liste des employés
       await loadEmployees();
       return { success: true };
     } catch (err) {
-      console.error('Erreur lors de la mise à jour de l\'employé:', err);
+      console.error('❌ useSupabaseEmployees - Error updating employee:', err);
       const errorMessage = err instanceof Error ? err.message : 'Erreur inconnue';
       setError(errorMessage);
       return { success: false, error: errorMessage };
@@ -148,21 +175,24 @@ export const useSupabaseEmployees = (filters?: EmployeeFilters) => {
     try {
       setError(null);
       
-      const response = await fetch(`${API_BASE_URL}/employees/${id}`, {
-        method: 'DELETE',
-      });
+      console.log('🔍 useSupabaseEmployees - Deleting employee:', id);
+      
+      const { error } = await supabase
+        .from('team_members')
+        .delete()
+        .eq('id', id);
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Erreur lors de la suppression de l\'employé');
+      if (error) {
+        throw error;
       }
+      
+      console.log('✅ useSupabaseEmployees - Employee deleted');
       
       // Recharger la liste des employés
       await loadEmployees();
       return { success: true };
     } catch (err) {
-      console.error('Erreur lors de la suppression de l\'employé:', err);
+      console.error('❌ useSupabaseEmployees - Error deleting employee:', err);
       const errorMessage = err instanceof Error ? err.message : 'Erreur inconnue';
       setError(errorMessage);
       return { success: false, error: errorMessage };

@@ -99,8 +99,8 @@ export default function SettingsTab() {
           <Text style={[styles.subtitle, isDark && styles.subtitleDark]}>Personnalisez votre expérience</Text>
         </View>
 
-        {/* Thème */}
-        <View style={[styles.section, isDark && styles.sectionDark]}>
+        {/* Thème - Temporairement masqué */}
+        {/* <View style={[styles.section, isDark && styles.sectionDark]}>
           <View style={styles.sectionHeader}>
             <Palette color={isDark ? "#60a5fa" : "#3b82f6"} size={24} strokeWidth={2} />
             <Text style={[styles.sectionTitle, isDark && styles.sectionTitleDark]}>Apparence</Text>
@@ -130,7 +130,7 @@ export default function SettingsTab() {
               {theme === 'auto' ? '✓ Défaut : suivre la préférence de l\'appareil' : 'Défaut : suivre la préférence de l\'appareil'}
             </Text>
           </TouchableOpacity>
-        </View>
+        </View> */}
 
         {/* Notifications Section */}
         <View style={[styles.section, isDark && styles.sectionDark]}>

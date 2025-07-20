@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { useSupabaseWorkingHours } from './useSupabaseWorkingHours';
 
 export interface ScheduledEvent {
   id: string;
@@ -16,7 +17,7 @@ export interface ScheduledEvent {
   start_date: string;
   end_date: string | null;
   is_active: boolean;
-  manager_id: string;
+  manager_id: number;
   store_id: number;
   created_at: string;
   updated_at: string;
@@ -36,14 +37,14 @@ export interface EventInput {
   start_date: string;
   end_date?: string | null;
   is_active?: boolean;
-  manager_id: string;
+  manager_id: number;
   store_id?: number;
 }
 
 export type RecurrenceType = 'none' | 'daily' | 'weekly' | 'weekdays' | 'custom';
 
 interface EventFilters {
-  managerId?: string;
+  managerId?: number;
   isActive?: boolean;
 }
 
@@ -54,79 +55,15 @@ interface EventStats {
   recurringEvents: number;
 }
 
-// Données temporaires pour les événements récurrents
-const getMockEvents = (managerId?: string): ScheduledEvent[] => {
-  if (!managerId) return [];
-  
-  return [
-    {
-      id: 'mock-1',
-      title: 'Mise en rayon matinale',
-      start_time: '05:00',
-      duration_minutes: 120,
-      packages: 50,
-      team_size: 2,
-      manager_section: 'Fruits & Légumes',
-      manager_initials: 'TH',
-      palette_condition: true,
-      recurrence_type: 'weekdays',
-      recurrence_days: [1, 2, 3, 4, 5], // Lundi à vendredi
-      start_date: '2024-01-01',
-      end_date: null,
-      is_active: true,
-      manager_id: managerId,
-      store_id: 1,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    },
-    {
-      id: 'mock-2',
-      title: 'Réapprovisionnement weekly',
-      start_time: '08:00',
-      duration_minutes: 180,
-      packages: 80,
-      team_size: 3,
-      manager_section: 'Épicerie',
-      manager_initials: 'TH',
-      palette_condition: false,
-      recurrence_type: 'weekly',
-      recurrence_days: null,
-      start_date: '2024-01-01',
-      end_date: '2024-12-31',
-      is_active: true,
-      manager_id: managerId,
-      store_id: 1,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    },
-    {
-      id: 'mock-3',
-      title: 'Inventaire mensuel',
-      start_time: '06:00',
-      duration_minutes: 240,
-      packages: 30,
-      team_size: 4,
-      manager_section: 'Tout magasin',
-      manager_initials: 'TH',
-      palette_condition: true,
-      recurrence_type: 'custom',
-      recurrence_days: [1], // Tous les lundis
-      start_date: '2024-01-01',
-      end_date: null,
-      is_active: false,
-      manager_id: managerId,
-      store_id: 1,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    }
-  ];
-};
-
 export const useSupabaseEvents = (filters: EventFilters = {}) => {
   const [events, setEvents] = useState<ScheduledEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isUsingMockData, setIsUsingMockData] = useState(false);
+  
+  // Hook pour les horaires de travail
+  const { isTimeRangeWithinWorkingHours, workingHours } = useSupabaseWorkingHours({ 
+    store_id: filters.store_id || 1 
+  });
 
   useEffect(() => {
     loadEvents();
@@ -137,7 +74,6 @@ export const useSupabaseEvents = (filters: EventFilters = {}) => {
       setIsLoading(true);
       setError(null);
       
-      // Vérifier si la table existe
       let query = supabase
         .from('scheduled_events')
         .select('*')
@@ -154,29 +90,33 @@ export const useSupabaseEvents = (filters: EventFilters = {}) => {
       const { data, error } = await query;
 
       if (error) {
-        // Si la table n'existe pas, utiliser des données fictives
         if (error.message.includes('does not exist') || error.message.includes('relation')) {
-          console.log('🔧 Table scheduled_events non trouvée, utilisation de données factices');
-          setIsUsingMockData(true);
-          setEvents(getMockEvents(filters.managerId));
-          setError('Table scheduled_events non configurée. Utilisation de données d\'exemple.');
+          console.log('🔧 Table scheduled_events non trouvée, création en cours...');
+          await createScheduledEventsTable();
+          setEvents([]);
           return;
         }
         throw error;
       }
       
-      setIsUsingMockData(false);
       setEvents(data || []);
     } catch (err) {
       console.error('Erreur lors du chargement des événements:', err);
-      
-      // En cas d'erreur, utiliser des données factices
-      console.log('🔧 Erreur de chargement, utilisation de données factices');
-      setIsUsingMockData(true);
-      setEvents(getMockEvents(filters.managerId));
-      setError('Impossible de charger les événements depuis la base de données. Utilisation de données d\'exemple.');
+      setEvents([]);
+      setError('Impossible de charger les événements depuis la base de données.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const createScheduledEventsTable = async () => {
+    try {
+      const { error } = await supabase.rpc('create_scheduled_events_table');
+      if (error) {
+        console.error('Erreur lors de la création de la table:', error);
+      }
+    } catch (err) {
+      console.error('Erreur lors de la création de la table scheduled_events:', err);
     }
   };
 
@@ -184,25 +124,21 @@ export const useSupabaseEvents = (filters: EventFilters = {}) => {
     try {
       setError(null);
       
-      if (isUsingMockData) {
-        // Mode factice : ajouter un événement temporaire
-        const newEvent: ScheduledEvent = {
-          ...eventData,
-          id: `mock-${Date.now()}`,
-          store_id: eventData.store_id || 1,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          palette_condition: eventData.palette_condition || false,
-          is_active: eventData.is_active !== false
-        };
-        
-        setEvents(prev => [newEvent, ...prev]);
-        return { success: true, event: newEvent };
+      // Calculer l'heure de fin pour la validation
+      const endTime = calculateEndTime(eventData.start_time, eventData.duration_minutes);
+      
+      // Validation des horaires de travail
+      if (workingHours && !isTimeRangeWithinWorkingHours(eventData.start_time, endTime)) {
+        const errorMessage = `❌ Impossible de créer l'événement : les horaires (${eventData.start_time} - ${endTime}) sont en dehors des horaires de travail du magasin (${workingHours.start_time} - ${workingHours.end_time})`;
+        console.error(errorMessage);
+        setError(errorMessage);
+        return { success: false, error: errorMessage };
       }
       
       const eventDataWithStore = {
         ...eventData,
-        store_id: eventData.store_id || 1
+        store_id: eventData.store_id || 1,
+        manager_id: parseInt(eventData.manager_id.toString())
       };
       
       const { data, error } = await supabase
@@ -226,16 +162,6 @@ export const useSupabaseEvents = (filters: EventFilters = {}) => {
   const updateEvent = async (id: string, updates: Partial<ScheduledEvent>) => {
     try {
       setError(null);
-      
-      if (isUsingMockData) {
-        // Mode factice : mettre à jour l'événement localement
-        setEvents(prev => prev.map(event => 
-          event.id === id 
-            ? { ...event, ...updates, updated_at: new Date().toISOString() }
-            : event
-        ));
-        return { success: true, event: null };
-      }
       
       const { data, error } = await supabase
         .from('scheduled_events')
@@ -263,12 +189,17 @@ export const useSupabaseEvents = (filters: EventFilters = {}) => {
     try {
       setError(null);
       
-      if (isUsingMockData) {
-        // Mode factice : supprimer l'événement localement
-        setEvents(prev => prev.filter(event => event.id !== id));
-        return { success: true };
+      // Supprimer d'abord toutes les tâches générées par cet événement
+      const { error: tasksError } = await supabase
+        .from('scheduled_tasks')
+        .delete()
+        .eq('recurring_event_id', id);
+
+      if (tasksError) {
+        console.warn('Erreur lors de la suppression des tâches liées:', tasksError);
       }
       
+      // Supprimer l'événement récurrent
       const { error } = await supabase
         .from('scheduled_events')
         .delete()
@@ -295,18 +226,15 @@ export const useSupabaseEvents = (filters: EventFilters = {}) => {
 
   const generateTasksForDate = async (date: string) => {
     try {
-      // Cette fonction génère les tâches pour une date donnée
-      // basée sur les événements récurrents actifs
       const activeEvents = events.filter(event => event.is_active);
       let generatedCount = 0;
 
       for (const event of activeEvents) {
         const shouldGenerate = shouldGenerateForDate(event, date);
         if (shouldGenerate) {
-          // Créer une tâche basée sur l'événement
           const taskData = {
             title: event.title,
-            description: `Tâche générée automatiquement depuis l'événement récurrent`,
+            description: `Tâche générée automatiquement depuis l'événement récurrent : ${event.title}`,
             start_time: event.start_time,
             end_time: calculateEndTime(event.start_time, event.duration_minutes),
             date: date,
@@ -316,7 +244,8 @@ export const useSupabaseEvents = (filters: EventFilters = {}) => {
             manager_initials: event.manager_initials,
             palette_condition: event.palette_condition,
             manager_id: event.manager_id,
-            store_id: event.store_id
+            store_id: event.store_id,
+            recurring_event_id: event.id
           };
 
           const { error } = await supabase
@@ -356,22 +285,25 @@ export const useSupabaseEvents = (filters: EventFilters = {}) => {
     const eventDate = new Date(date);
     const startDate = new Date(event.start_date);
     const endDate = event.end_date ? new Date(event.end_date) : null;
-
+    
     // Vérifier si la date est dans la plage de l'événement
-    if (eventDate < startDate || (endDate && eventDate > endDate)) {
-      return false;
-    }
-
+    if (eventDate < startDate) return false;
+    if (endDate && eventDate > endDate) return false;
+    
+    const dayOfWeek = eventDate.getDay(); // 0 = Dimanche, 1 = Lundi, etc.
+    
     switch (event.recurrence_type) {
       case 'daily':
         return true;
       case 'weekly':
-        return eventDate.getDay() === startDate.getDay();
+        // Générer seulement le jour de la semaine de la date de début
+        return dayOfWeek === startDate.getDay();
       case 'weekdays':
-        const day = eventDate.getDay();
-        return day >= 1 && day <= 5; // Lundi à vendredi
+        // Générer du lundi au vendredi (1-5)
+        return dayOfWeek >= 1 && dayOfWeek <= 5;
       case 'custom':
-        return event.recurrence_days?.includes(eventDate.getDay()) || false;
+        // Générer selon les jours personnalisés
+        return event.recurrence_days?.includes(dayOfWeek) || false;
       default:
         return false;
     }
@@ -379,16 +311,10 @@ export const useSupabaseEvents = (filters: EventFilters = {}) => {
 
   const calculateEndTime = (startTime: string, durationMinutes: number): string => {
     const [hours, minutes] = startTime.split(':').map(Number);
-    const startDate = new Date();
-    startDate.setHours(hours, minutes, 0, 0);
-    
-    const endDate = new Date(startDate.getTime() + durationMinutes * 60 * 1000);
-    
-    return endDate.toLocaleTimeString('fr-FR', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false
-    });
+    const totalMinutes = hours * 60 + minutes + durationMinutes;
+    const endHours = Math.floor(totalMinutes / 60);
+    const endMinutes = totalMinutes % 60;
+    return `${endHours.toString().padStart(2, '0')}:${endMinutes.toString().padStart(2, '0')}`;
   };
 
   const getRecurrenceDescription = (event: ScheduledEvent): string => {
@@ -396,15 +322,16 @@ export const useSupabaseEvents = (filters: EventFilters = {}) => {
       case 'daily':
         return 'Tous les jours';
       case 'weekly':
+        const startDate = new Date(event.start_date);
         const dayNames = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
-        const startDay = new Date(event.start_date).getDay();
-        return `Chaque ${dayNames[startDay]}`;
+        return `Tous les ${dayNames[startDate.getDay()]}s`;
       case 'weekdays':
-        return 'Du lundi au vendredi';
+        return 'Lundi à vendredi';
       case 'custom':
         if (event.recurrence_days && event.recurrence_days.length > 0) {
           const dayNames = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
-          return event.recurrence_days.map(day => dayNames[day]).join(', ');
+          const days = event.recurrence_days.map(day => dayNames[day]).join(', ');
+          return `Jours personnalisés: ${days}`;
         }
         return 'Jours personnalisés';
       default:
@@ -414,27 +341,20 @@ export const useSupabaseEvents = (filters: EventFilters = {}) => {
 
   const getNextOccurrence = (event: ScheduledEvent): Date | null => {
     if (!event.is_active) return null;
-
+    
     const today = new Date();
     const startDate = new Date(event.start_date);
     const endDate = event.end_date ? new Date(event.end_date) : null;
-
-    // Commencer à partir d'aujourd'hui ou de la date de début si elle est dans le futur
-    let nextDate = new Date(Math.max(today.getTime(), startDate.getTime()));
-
-    // Chercher la prochaine occurrence valide
-    for (let i = 0; i < 365; i++) { // Limiter à un an pour éviter les boucles infinies
-      if (endDate && nextDate > endDate) {
-        return null;
+    
+    if (endDate && today > endDate) return null;
+    
+    // Chercher la prochaine occurrence
+    for (let date = new Date(today); date <= new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000); date.setDate(date.getDate() + 1)) {
+      if (shouldGenerateForDate(event, date.toISOString().split('T')[0])) {
+        return date;
       }
-
-      if (shouldGenerateForDate(event, nextDate.toISOString().split('T')[0])) {
-        return nextDate;
-      }
-
-      nextDate.setDate(nextDate.getDate() + 1);
     }
-
+    
     return null;
   };
 
@@ -443,7 +363,7 @@ export const useSupabaseEvents = (filters: EventFilters = {}) => {
     const activeEvents = events.filter(e => e.is_active).length;
     const inactiveEvents = totalEvents - activeEvents;
     const recurringEvents = events.filter(e => e.recurrence_type !== 'none').length;
-
+    
     return {
       totalEvents,
       activeEvents,
@@ -451,6 +371,8 @@ export const useSupabaseEvents = (filters: EventFilters = {}) => {
       recurringEvents
     };
   };
+
+  const refresh = () => loadEvents();
 
   return {
     events,
@@ -465,7 +387,6 @@ export const useSupabaseEvents = (filters: EventFilters = {}) => {
     getRecurrenceDescription,
     getNextOccurrence,
     getEventStats,
-    refresh: loadEvents,
-    isUsingMockData
+    refresh
   };
 }; 
