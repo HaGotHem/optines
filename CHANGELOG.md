@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.0.13] - 2025-07-20
+
+### 📊 Résumé des modifications
+- **Total des modifications:** 0
+
+### 🔄 Derniers commits
+- `714af34` 🚀 Release v1.0.12 - Mise à jour automatique
+- `6fe109d` 🚀 Release v1.0.11 - Mise à jour automatique
+- `fad80a0` 🚀 Release v1.0.8 - Mise à jour automatique
+- `58127d8` 🚀 Release v1.0.7 - Mise à jour automatique
+- `e09489d` 🚀 Release v1.0.10 - Mise à jour automatique
+- `fc90afc` 🚀 Release v1.0.9 - Mise à jour automatique
+- `25f8dfa` 🚀 Release v1.0.8 - Mise à jour automatique
+- `c59c60a` 🚀 Release v1.0.7 - Mise à jour automatique
+- `8ed734b` 🚀 Release v1.0.6 - Mise à jour automatique
+- `0197bb8` 🚀 Release v1.0.5 - Mise à jour automatique
+
+
 ## [1.0.12] - 2025-07-20
 
 ### 📊 Résumé des modifications
