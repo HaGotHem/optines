@@ -248,6 +248,7 @@ export default function CalendarTab() {
     events: recurringEvents, 
     isLoading: eventsLoading, 
     createEvent,
+    updateEvent,
     deleteEvent: deleteRecurringEventFromSupabase,
     reload: reloadEvents 
   } = useSupabaseEvents({ managerId: undefined }); // Temporairement récupérer tous les événements
@@ -1375,6 +1376,11 @@ export default function CalendarTab() {
   const saveEditedRecurringEvent = async () => {
     if (!editingRecurringEvent || !editRecTitle.trim()) {
       Alert.alert('Erreur', 'Veuillez remplir tous les champs obligatoires');
+      return;
+    }
+
+    if (editRecRecurrenceType === 'custom' && editRecCustomDays.length === 0) {
+      Alert.alert('Erreur', 'Veuillez sélectionner au moins un jour pour la récurrence personnalisée');
       return;
     }
 
@@ -3839,6 +3845,50 @@ export default function CalendarTab() {
                     <ChevronRight color={isDark ? "#6b7280" : "#9ca3af"} size={20} strokeWidth={2} />
                   </TouchableOpacity>
                 </View>
+
+                {/* Jours personnalisés pour l'édition */}
+                {editRecRecurrenceType === 'custom' && (
+                  <View style={styles.inputContainerMobile}>
+                    <Text style={[styles.inputLabelMobile, isDark && styles.inputLabelMobileDark]}>
+                      Sélectionner les jours
+                    </Text>
+                    <View style={styles.customDaysContainerMobile}>
+                      {[
+                        { day: 1, label: 'Lun', name: 'Lundi' },
+                        { day: 2, label: 'Mar', name: 'Mardi' },
+                        { day: 3, label: 'Mer', name: 'Mercredi' },
+                        { day: 4, label: 'Jeu', name: 'Jeudi' },
+                        { day: 5, label: 'Ven', name: 'Vendredi' },
+                        { day: 6, label: 'Sam', name: 'Samedi' },
+                        { day: 7, label: 'Dim', name: 'Dimanche' }
+                      ].map(({ day, label, name }) => (
+                        <TouchableOpacity
+                          key={day}
+                          style={[
+                            styles.dayButtonMobile,
+                            isDark && styles.dayButtonMobileDark,
+                            editRecCustomDays.includes(day) && styles.selectedDayButtonMobile
+                          ]}
+                          onPress={() => {
+                            if (editRecCustomDays.includes(day)) {
+                              setEditRecCustomDays(editRecCustomDays.filter(d => d !== day));
+                            } else {
+                              setEditRecCustomDays([...editRecCustomDays, day]);
+                            }
+                          }}
+                        >
+                          <Text style={[
+                            styles.dayButtonTextMobile,
+                            isDark && styles.dayButtonTextMobileDark,
+                            editRecCustomDays.includes(day) && styles.selectedDayButtonTextMobile
+                          ]}>
+                            {label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                )}
               </View>
             </ScrollView>
             
@@ -5959,5 +6009,44 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#ffffff',
+  },
+  saveButtonTextMobileDark: {
+    color: '#ffffff',
+  },
+  // Styles pour les jours personnalisés dans le modal mobile
+  customDaysContainerMobile: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  dayButtonMobile: {
+    backgroundColor: '#f9fafb',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    minWidth: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dayButtonMobileDark: {
+    backgroundColor: '#3f3f46',
+    borderColor: '#52525b',
+  },
+  selectedDayButtonMobile: {
+    backgroundColor: '#eff6ff',
+    borderColor: '#3b82f6',
+  },
+  dayButtonTextMobile: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  dayButtonTextMobileDark: {
+    color: '#d4d4d8',
+  },
+  selectedDayButtonTextMobile: {
+    color: '#1d4ed8',
   },
 });

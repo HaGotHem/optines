@@ -18,6 +18,40 @@ if not exist "node_modules" (
 )
 
 echo.
+echo 🔍 Vérification des releases automatiques...
+echo.
+echo Voulez-vous vérifier et créer une release automatique ?
+echo [1] Oui - Vérifier et créer une release si nécessaire
+echo [2] Non - Démarrer directement l'application
+echo [3] Vérifier seulement (sans créer de release)
+echo.
+set /p choice="Votre choix (1/2/3): "
+
+if "%choice%"=="1" (
+    echo.
+    echo 🔄 Vérification des modifications...
+    call npm run check-modifications
+    echo.
+    echo Créer une release automatique maintenant ?
+    set /p auto_release="Oui/Non (o/n): "
+    if /i "%auto_release%"=="o" (
+        echo.
+        echo 🚀 Création de la release automatique...
+        call npm run auto-release
+        echo.
+        echo ✅ Release terminée !
+        timeout /t 3 /nobreak >nul
+    )
+) else if "%choice%"=="3" (
+    echo.
+    echo 🔍 Vérification des modifications...
+    call npm run check-modifications
+    echo.
+    echo Appuyez sur une touche pour continuer...
+    pause >nul
+)
+
+echo.
 echo 🔍 Vérification de l'API...
 timeout /t 2 /nobreak >nul
 call npm run check-health 2>nul

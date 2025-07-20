@@ -175,8 +175,11 @@ function commitAndPush(version) {
     const commitMessage = `🚀 Release v${version} - Mise à jour automatique`;
     execSync(`git commit -m "${commitMessage}"`, { stdio: 'inherit' });
     
-    // Push sur la branche main
-    execSync('git push origin main', { stdio: 'inherit' });
+    // Obtenir la branche actuelle
+    const currentBranch = execSync('git branch --show-current', { encoding: 'utf8' }).trim();
+    
+    // Push sur la branche actuelle
+    execSync(`git push origin ${currentBranch}`, { stdio: 'inherit' });
     
     log('✅ Commit et push effectués', 'green');
     return true;
@@ -214,7 +217,7 @@ function createGitHubRelease(version, changelogEntry) {
   }
 }
 
-function main() {
+function createRelease(force = false) {
   log('🚀 Démarrage du système de release automatique...', 'bright');
   
   // Vérifier le statut Git
@@ -225,8 +228,12 @@ function main() {
   log(`📦 Version actuelle: ${currentVersion}`, 'blue');
   
   // Vérifier si on doit faire une release
-  if (gitStatus.modifications.total >= MODIFICATIONS_THRESHOLD) {
-    log(`🎯 Seuil atteint (${MODIFICATIONS_THRESHOLD} modifications)! Création d'une release...`, 'yellow');
+  if (force || gitStatus.modifications.total >= MODIFICATIONS_THRESHOLD) {
+    if (force) {
+      log(`🎯 Release forcée! Création d'une release...`, 'yellow');
+    } else {
+      log(`🎯 Seuil atteint (${MODIFICATIONS_THRESHOLD} modifications)! Création d'une release...`, 'yellow');
+    }
     
     // Incrémenter la version
     const newVersion = incrementVersion(currentVersion, 'patch');
@@ -245,12 +252,22 @@ function main() {
     if (commitAndPush(newVersion)) {
       createGitHubRelease(newVersion, changelogEntry);
       log('🎉 Release v' + newVersion + ' créée avec succès!', 'green');
+      return true;
     }
     
   } else {
     const remaining = MODIFICATIONS_THRESHOLD - gitStatus.modifications.total;
     log(`⏳ ${remaining} modification(s) restante(s) avant la prochaine release`, 'yellow');
+    return false;
   }
+}
+
+function main() {
+  // Vérifier les arguments de ligne de commande
+  const args = process.argv.slice(2);
+  const force = args.includes('--force') || args.includes('-f');
+  
+  return createRelease(force);
 }
 
 // Exécuter le script

@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.0.2] - 2025-07-20
+
+### 📊 Résumé des modifications
+- **Total des modifications:** 7
+- **Fichiers modifiés:** 6
+
+### 🔄 Derniers commits
+- `28906db` 🚀 Release v1.0.1 - Mise à jour automatique
+- `9f2d20d` Correction du système de libération automatique des employés
+- `0394eba` debug: Amélioration du chargement des employés et tâches dans le calculateur
+- `e13ee00` fix: Correction des tâches planifiées - passage complet à Supabase
+- `f9a2d53` feat: Ajout système de sélection d'employés et corrections diverses
+
+
 ## [1.0.1] - 2025-07-20
 
 ### 📊 Résumé des modifications
@@ -37,4 +51,23 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - Seuil de modifications : 20 fichiers
 - Versioning : Semantic Versioning (MAJOR.MINOR.PATCH)
 - Branche cible : main
-- Changelog automatique avec emojis et catégorisation 
+- Changelog automatique avec emojis et catégorisation
+
+## [1.0.1] - 2024-12-19
+
+### 🚀 Amélioration du système de release
+- **Scripts batch Windows** ajoutés pour une meilleure expérience utilisateur
+- **start.bat amélioré** avec option de vérification de release au démarrage
+- **release.bat** créé pour la gestion complète des releases
+- **Interface utilisateur intuitive** avec menus interactifs
+- **Gestion d'erreurs améliorée** dans les scripts batch
+
+### 📦 Nouveaux scripts batch
+- `start.bat` - Démarrage avec option de release automatique
+- `release.bat` - Gestion complète des releases (vérifier, créer, forcer)
+
+### 🔧 Fonctionnalités ajoutées
+- Vérification automatique des dépendances
+- Options multiples (vérifier seulement, créer automatique, forcer)
+- Affichage de l'historique des releases
+- Instructions détaillées pour les releases GitHub 

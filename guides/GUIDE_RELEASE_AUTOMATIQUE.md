@@ -16,6 +16,14 @@ npm run check-modifications
 ```
 **Fonction :** Affiche le nombre de modifications actuelles et combien il en reste avant la prochaine release.
 
+### 2. Scripts Batch Windows
+```batch
+start.bat          # Démarrage avec option de release
+release.bat        # Gestion complète des releases
+```
+
+**Fonction :** Scripts Windows pour faciliter la gestion des releases avec interface utilisateur.
+
 **Exemple de sortie :**
 ```
 🔍 Vérification des modifications...
@@ -95,6 +103,21 @@ npm run auto-release
 
 # Suivre les instructions pour créer la release GitHub
 ```
+
+### Workflow avec scripts Windows
+```batch
+# Option 1: Démarrage avec vérification de release
+start.bat
+
+# Option 2: Gestion complète des releases
+release.bat
+```
+
+**Avantages des scripts batch :**
+- Interface utilisateur intuitive
+- Vérification automatique des dépendances
+- Options multiples (vérifier, créer, forcer)
+- Gestion d'erreurs intégrée
 
 ## 📊 Exemple de Changelog Généré
 
