@@ -94,6 +94,20 @@ export class NotificationService {
     );
   }
 
+  // Notifier une tâche urgente attribuée
+  async notifyUrgentTaskAssigned(task: any, managerName: string) {
+    await this.sendImmediateNotification(
+      '🚨 TÂCHE URGENTE ATTRIBUÉE',
+      `Tâche urgente "${task.title}" attribuée par le directeur - ${task.packages} colis à traiter le ${task.date} de ${task.start_time} à ${task.end_time}`,
+      { 
+        type: 'urgent_task_assigned', 
+        taskId: task.id,
+        managerName,
+        priority: 'urgent'
+      }
+    );
+  }
+
   // Analyser la charge de travail de l'équipe pour une date donnée
   async analyzeTeamWorkload(date: string): Promise<{
     totalPackages: number;

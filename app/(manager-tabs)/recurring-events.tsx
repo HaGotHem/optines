@@ -45,6 +45,7 @@ export default function RecurringEventsTab() {
     events,
     isLoading,
     error,
+    createEvent,
     deleteEvent,
     updateEvent,
     toggleEventActive,
@@ -620,78 +621,78 @@ export default function RecurringEventsTab() {
             </View>
           </View>
         </View>
+      </Modal>
 
-        {/* DatePicker pour la date de début */}
-        <DatePickerCalendar
-          visible={showStartDatePicker}
-          onClose={() => setShowStartDatePicker(false)}
-          onDateSelect={setEventStartDate}
-          selectedDate={eventStartDate}
-          minDate={new Date()}
-          maxDate={new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)}
-        />
+      {/* DatePicker pour la date de début */}
+      <DatePickerCalendar
+        visible={showStartDatePicker}
+        onClose={() => setShowStartDatePicker(false)}
+        onDateSelect={setEventStartDate}
+        selectedDate={eventStartDate}
+        minDate={new Date()}
+        maxDate={new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)}
+      />
 
-        {/* DatePicker pour la date de fin */}
-        <DatePickerCalendar
-          visible={showEndDatePicker}
-          onClose={() => setShowEndDatePicker(false)}
-          onDateSelect={setEventEndDate}
-          selectedDate={eventEndDate || new Date()}
-          minDate={eventStartDate}
-          maxDate={new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)}
-        />
+      {/* DatePicker pour la date de fin */}
+      <DatePickerCalendar
+        visible={showEndDatePicker}
+        onClose={() => setShowEndDatePicker(false)}
+        onDateSelect={setEventEndDate}
+        selectedDate={eventEndDate || new Date()}
+        minDate={eventStartDate}
+        maxDate={new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)}
+      />
 
-        {/* TimePicker pour l'heure de début */}
-        <Modal
-          visible={showTimePicker}
-          transparent={true}
-          animationType="fade"
-          onRequestClose={() => setShowTimePicker(false)}
-        >
-          <View style={styles.timePickerOverlay}>
-            <View style={[styles.timePickerContent, isDark && styles.modalContentDark]}>
-              <Text style={[styles.timePickerTitle, isDark && styles.textDark]}>Sélectionner l'heure</Text>
-              <View style={styles.timePickerGrid}>
-                {Array.from({ length: 24 }, (_, hour) => (
-                  <View key={hour} style={styles.timePickerRow}>
-                    {Array.from({ length: 4 }, (_, minuteIndex) => {
-                      const minute = minuteIndex * 15;
-                      const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-                      return (
-                        <TouchableOpacity
-                          key={minute}
-                          style={[
-                            styles.timeButton,
-                            eventStartTime === timeString && styles.timeButtonActive,
-                            isDark && styles.timeButtonDark
-                          ]}
-                          onPress={() => {
-                            setEventStartTime(timeString);
-                            setShowTimePicker(false);
-                          }}
-                        >
-                          <Text style={[
-                            styles.timeButtonText,
-                            eventStartTime === timeString && styles.timeButtonTextActive,
-                            isDark && styles.textDark
-                          ]}>
-                            {timeString}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                ))}
-              </View>
-              <TouchableOpacity
-                style={[styles.modalButton, isDark && styles.modalButtonDark]}
-                onPress={() => setShowTimePicker(false)}
-              >
-                <Text style={[styles.modalButtonText, isDark && styles.textDark]}>Fermer</Text>
-              </TouchableOpacity>
+      {/* TimePicker pour l'heure de début */}
+      <Modal
+        visible={showTimePicker}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowTimePicker(false)}
+      >
+        <View style={styles.timePickerOverlay}>
+          <View style={[styles.timePickerContent, isDark && styles.modalContentDark]}>
+            <Text style={[styles.timePickerTitle, isDark && styles.textDark]}>Sélectionner l'heure</Text>
+            <View style={styles.timePickerGrid}>
+              {Array.from({ length: 24 }, (_, hour) => (
+                <View key={hour} style={styles.timePickerRow}>
+                  {Array.from({ length: 4 }, (_, minuteIndex) => {
+                    const minute = minuteIndex * 15;
+                    const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+                    return (
+                      <TouchableOpacity
+                        key={minute}
+                        style={[
+                          styles.timeButton,
+                          eventStartTime === timeString && styles.timeButtonActive,
+                          isDark && styles.timeButtonDark
+                        ]}
+                        onPress={() => {
+                          setEventStartTime(timeString);
+                          setShowTimePicker(false);
+                        }}
+                      >
+                        <Text style={[
+                          styles.timeButtonText,
+                          eventStartTime === timeString && styles.timeButtonTextActive,
+                          isDark && styles.textDark
+                        ]}>
+                          {timeString}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ))}
             </View>
+            <TouchableOpacity
+              style={[styles.modalButton, isDark && styles.modalButtonDark]}
+              onPress={() => setShowTimePicker(false)}
+            >
+              <Text style={[styles.modalButtonText, isDark && styles.textDark]}>Fermer</Text>
+            </TouchableOpacity>
           </View>
-        </Modal>
+        </View>
       </Modal>
     </SafeAreaView>
   );

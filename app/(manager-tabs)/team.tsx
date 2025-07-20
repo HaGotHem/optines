@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,12 +10,18 @@ import {
   Modal,
   TextInput,
   Alert,
+  RefreshControl,
 } from 'react-native';
-import { Users, Phone, Mail, MapPin, Star, Clock, Plus, X, UserPlus, Calendar, Target, Edit, ChevronDown, ArrowLeft, Coffee, Repeat, BarChart3 } from 'lucide-react-native';
+import { 
+  Users, Phone, Mail, MapPin, Clock, X, UserPlus, Calendar, 
+  Target, Edit, ChevronDown, ArrowLeft, Coffee, BarChart3, Search,
+  Filter, TrendingUp, Activity
+} from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useSupabaseEmployees } from '../../hooks/useSupabaseEmployees';
 import { useSupabaseAuth } from '../../hooks/useSupabaseAuth';
 import { useUserProfile } from '../../hooks/useUserProfile';
+import { useSupabaseTasks } from '../../hooks/useSupabaseTasks';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../../contexts/ThemeContext';
 import BreakManager from '../../components/BreakManager';
@@ -81,15 +87,18 @@ export default function TeamTab() {
   const [showBreakManager, setShowBreakManager] = useState(false);
   const [selectedEmployeeForBreaks, setSelectedEmployeeForBreaks] = useState<any>(null);
 
+  // État pour la recherche
+  const [searchQuery, setSearchQuery] = useState('');
+
   // Hooks
   const { user: authUser } = useSupabaseAuth();
-  const { user: userProfile } = useUserProfile();
+  const { profile: userProfile } = useUserProfile();
   
   // Filtrer les employés par section du manager
   const { 
     employees: teamMembers, 
-    isLoading, 
-    error,
+    isLoading: employeesLoading, 
+    error: employeesError,
     createEmployee, 
     updateEmployee, 
     deleteEmployee
@@ -97,12 +106,61 @@ export default function TeamTab() {
     userProfile?.section ? { section: userProfile.section } : undefined
   );
 
+  // Récupérer les tâches du rayon pour les statistiques
+  const { tasks: rayonTasks, isLoading: tasksLoading } = useSupabaseTasks({
+    managerId: userProfile?.id?.toString(),
+    date: new Date().toISOString().split('T')[0] // Aujourd'hui
+  });
+
   // Debug: Monitor team members state
   useEffect(() => {
     console.log('🟩 [DEBUG] TeamTab - userProfile:', userProfile);
     console.log('Team members state updated:', teamMembers);
     console.log('Team members IDs:', teamMembers.map(m => m.id));
   }, [userProfile, teamMembers]);
+
+  // Calculer les statistiques réelles
+  const stats = useMemo(() => {
+    const totalEmployees = teamMembers.length;
+    
+    // Performance moyenne du rayon (moyenne des performances individuelles)
+    const averagePerformance = totalEmployees > 0 
+      ? Math.round(teamMembers.reduce((sum, emp) => sum + emp.performance, 0) / totalEmployees)
+      : 0;
+    
+    // Employés actuellement en train de faire une tâche (status = 'busy')
+    const activeEmployees = teamMembers.filter(emp => emp.status === 'busy').length;
+    
+    // Nombre de colis traités aujourd'hui (somme des packages des tâches du jour)
+    const packagesToday = rayonTasks.reduce((sum, task) => sum + (task.packages || 0), 0);
+    
+    return {
+      totalEmployees,
+      averagePerformance,
+      activeEmployees,
+      packagesToday
+    };
+  }, [teamMembers, rayonTasks]);
+
+  const isLoading = employeesLoading || tasksLoading;
+
+  // Filtrer les employés selon la recherche
+  const filteredTeamMembers = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return teamMembers;
+    }
+    
+    const query = searchQuery.toLowerCase().trim();
+    return teamMembers.filter(member => 
+      member.name.toLowerCase().includes(query) ||
+      member.role.toLowerCase().includes(query) ||
+      member.section.toLowerCase().includes(query) ||
+      member.location.toLowerCase().includes(query) ||
+      member.shift.toLowerCase().includes(query) ||
+      (member.email && member.email.toLowerCase().includes(query)) ||
+      (member.phone && member.phone.toLowerCase().includes(query))
+    );
+  }, [teamMembers, searchQuery]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -148,7 +206,7 @@ export default function TeamTab() {
         section: newMemberSection.trim(),
         location: newMemberLocation.trim(),
         shift: newMemberShift as 'matin' | 'après-midi' | 'soir',
-        manager_id: userProfile.id,
+        manager_id: parseInt(userProfile.id),
         store_id: userProfile.store_id
       };
 
@@ -293,84 +351,133 @@ export default function TeamTab() {
 
   return (
     <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.scrollView} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isLoading}
+            onRefresh={() => {
+              // Refresh logic here
+            }}
+            tintColor={isDark ? "#f4f4f5" : "#3b82f6"}
+          />
+        }
+      >
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={[styles.backButton, isDark ? styles.backButtonDark : styles.backButtonLight]}>
-            <ArrowLeft color={isDark ? "#f4f4f5" : "#3b82f6"} size={28} strokeWidth={2} />
-          </TouchableOpacity>
-          <Users color="#3b82f6" size={32} strokeWidth={2} />
-          <Text style={[styles.title, isDark && styles.titleDark]}>Équipe {userProfile?.section || 'Rayon'}</Text>
-          <Text style={[styles.subtitle, isDark && styles.subtitleDark]}>Gérez votre équipe de {userProfile?.section || 'rayon'}</Text>
+          <View style={styles.headerTop}>
+            <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+              <ArrowLeft color={isDark ? "#f4f4f5" : "#3b82f6"} size={24} strokeWidth={2} />
+            </TouchableOpacity>
+            <View style={styles.headerTitle}>
+              <Text style={[styles.title, isDark && styles.titleDark]}>Équipe</Text>
+              <Text style={[styles.subtitle, isDark && styles.subtitleDark]}>
+                {userProfile?.section || 'Rayon'} • {filteredTeamMembers.length} employés
+              </Text>
+            </View>
+          </View>
+
+          {/* Barre de recherche */}
+          <View style={[styles.searchContainer, isDark && styles.searchContainerDark]}>
+            <Search color={isDark ? '#94a3b8' : '#64748b'} size={20} strokeWidth={2} />
+            <TextInput
+              style={[styles.searchInput, isDark && styles.searchInputDark]}
+              placeholder="Rechercher un employé..."
+              placeholderTextColor={isDark ? '#94a3b8' : '#64748b'}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <Text style={[styles.clearSearch, isDark && styles.clearSearchDark]}>✕</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         {/* Team Stats */}
         <View style={styles.statsContainer}>
-          <View style={styles.statCard}>
-            <Users color="#3b82f6" size={20} strokeWidth={2} />
-            <Text style={styles.statValue}>{teamMembers.length}</Text>
-            <Text style={styles.statLabel}>Employés</Text>
+          <View style={[styles.statCard, isDark && styles.statCardDark]}>
+            <View style={[styles.statIcon, { backgroundColor: 'rgba(59, 130, 246, 0.1)' }]}>
+              <Users color="#3b82f6" size={20} strokeWidth={2} />
+            </View>
+            <Text style={[styles.statValue, isDark && styles.statValueDark]}>{stats.totalEmployees}</Text>
+            <Text style={[styles.statLabel, isDark && styles.statLabelDark]}>Employés</Text>
           </View>
-          <View style={styles.statCard}>
-            <Target color="#10b981" size={20} strokeWidth={2} />
-            <Text style={styles.statValue}>
-              {teamMembers.length > 0 ? Math.round(teamMembers.reduce((sum, m) => sum + m.performance, 0) / teamMembers.length) : 0}%
+          <View style={[styles.statCard, isDark && styles.statCardDark]}>
+            <View style={[styles.statIcon, { backgroundColor: 'rgba(16, 185, 129, 0.1)' }]}>
+              <TrendingUp color="#10b981" size={20} strokeWidth={2} />
+            </View>
+            <Text style={[styles.statValue, isDark && styles.statValueDark]}>
+              {stats.averagePerformance}%
             </Text>
-            <Text style={styles.statLabel}>Performance</Text>
+            <Text style={[styles.statLabel, isDark && styles.statLabelDark]}>Performance</Text>
           </View>
-          <View style={styles.statCard}>
-            <Clock color="#f59e0b" size={20} strokeWidth={2} />
-            <Text style={styles.statValue}>
-              {teamMembers.filter(m => m.status === 'online').length}
+          <View style={[styles.statCard, isDark && styles.statCardDark]}>
+            <View style={[styles.statIcon, { backgroundColor: 'rgba(245, 158, 11, 0.1)' }]}>
+              <Activity color="#f59e0b" size={20} strokeWidth={2} />
+            </View>
+            <Text style={[styles.statValue, isDark && styles.statValueDark]}>
+              {stats.activeEmployees}
             </Text>
-            <Text style={styles.statLabel}>Actifs</Text>
+            <Text style={[styles.statLabel, isDark && styles.statLabelDark]}>Actifs</Text>
           </View>
-          <View style={styles.statCard}>
-            <Target color="#8b5cf6" size={20} strokeWidth={2} />
-            <Text style={styles.statValue}>
-              {teamMembers.reduce((sum, m) => sum + m.tasks_completed, 0)}
+          <View style={[styles.statCard, isDark && styles.statCardDark]}>
+            <View style={[styles.statIcon, { backgroundColor: 'rgba(139, 92, 246, 0.1)' }]}>
+              <Target color="#8b5cf6" size={20} strokeWidth={2} />
+            </View>
+            <Text style={[styles.statValue, isDark && styles.statValueDark]}>
+              {stats.packagesToday}
             </Text>
-            <Text style={styles.statLabel}>Tâches</Text>
+            <Text style={[styles.statLabel, isDark && styles.statLabelDark]}>Colis</Text>
           </View>
         </View>
+
+
 
         {/* Team Members */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Employés de la section</Text>
-            <TouchableOpacity 
-              style={styles.addButton}
-              onPress={() => setShowAddMemberModal(true)}
-            >
-              <Plus color="#ffffff" size={20} strokeWidth={2} />
-            </TouchableOpacity>
+            <Text style={[styles.sectionTitle, isDark && styles.sectionTitleDark]}>Employés de la section</Text>
           </View>
           
-          {teamMembers.length === 0 ? (
+          {filteredTeamMembers.length === 0 ? (
             <View style={styles.emptyState}>
               <Users color="#9ca3af" size={48} strokeWidth={2} />
-              <Text style={styles.emptyStateText}>Aucun employé dans votre section</Text>
-              <Text style={styles.emptyStateSubtext}>Ajoutez des employés pour commencer</Text>
+              <Text style={styles.emptyStateText}>
+                {searchQuery.trim() ? 'Aucun employé trouvé' : 'Aucun employé dans votre section'}
+              </Text>
+              <Text style={styles.emptyStateSubtext}>
+                {searchQuery.trim() ? 'Essayez avec d\'autres termes de recherche' : 'Ajoutez des employés pour commencer'}
+              </Text>
             </View>
           ) : (
-            teamMembers
+            filteredTeamMembers
             .filter(member => member.id !== null && member.id !== undefined && !isNaN(member.id))
             .map((member) => (
-            <View key={member.id} style={styles.memberCard}>
+            <View key={member.id} style={[styles.memberCard, isDark && styles.memberCardDark]}>
               <View style={styles.memberHeader}>
-                <Image source={{ uri: member.avatar_url || 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMzAiIGN5PSIzMCIgcj0iMzAiIGZpbGw9IiNlNWU3ZWIiLz4KPHN2ZyB4PSIxNSIgeT0iMTUiIHdpZHRoPSIzMCIgaGVpZ2h0PSIzMCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIj4KPHBhdGggZD0iTTEyIDEyQzE0LjIwOTEgMTIgMTYgMTAuMjA5MSAxNiA4QzE2IDUuNzkwODYgMTQuMjA5MSA0IDEyIDRDOS43OTA4NiA0IDggNS43OTA4NiA4IDhDOCAxMC4yMDkxIDkuNzkwODYgMTIgMTIgMTJaIiBmaWxsPSIjOWNhM2FmIi8+CjxwYXRoIGQ9Ik0xMiAxNEM5LjMzIDE0IDcgMTEuNjcgNyA5SDE3QzE3IDExLjY3IDE0LjY3IDE0IDEyIDE0WiIgZmlsbD0iIzljYTNhZiIvPgo8L3N2Zz4KPC9zdmc+' }} style={styles.avatar} />
+                <View style={styles.avatarContainer}>
+                  <Image 
+                    source={{ 
+                      uri: member.avatar_url || 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMzAiIGN5PSIzMCIgcj0iMzAiIGZpbGw9IiNlNWU3ZWIiLz4KPHN2ZyB4PSIxNSIgeT0iMTUiIHdpZHRoPSIzMCIgaGVpZ2h0PSIzMCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIj4KPHBhdGggZD0iTTEyIDEyQzE0LjIwOTEgMTIgMTYgMTAuMjA5MSAxNiA4QzE2IDUuNzkwODYgMTQuMjA5MSA0IDEyIDRDOS43OTA4NiA0IDggNS43OTA4NiA4IDhDOCAxMC4yMDkxIDkuNzkwODYgMTIgMTIgMTJaIiBmaWxsPSIjOWNhM2FmIi8+CjxwYXRoIGQ9Ik0xMiAxNEM5LjMzIDE0IDcgMTEuNjcgNyA5SDE3QzE3IDExLjY3IDE0LjY3IDE0IDEyIDE0WiIgZmlsbD0iIzljYTNhZiIvPgo8L3N2Zz4KPC9zdmc+' 
+                    }} 
+                    style={styles.avatar} 
+                  />
+                  <View 
+                    style={[
+                      styles.statusIndicator, 
+                      { backgroundColor: getStatusColor(member.status) }
+                    ]} 
+                  />
+                </View>
                 <View style={styles.memberInfo}>
-                  <Text style={styles.memberName}>{member.name}</Text>
-                  <Text style={styles.memberRole}>{member.role}</Text>
-                      <Text style={styles.memberSection}>{member.section}</Text>
+                  <Text style={[styles.memberName, isDark && styles.memberNameDark]}>{member.name}</Text>
+                  <Text style={[styles.memberRole, isDark && styles.memberRoleDark]}>{member.role}</Text>
+                  <Text style={[styles.memberSection, isDark && styles.memberSectionDark]}>{member.section}</Text>
                   <View style={styles.statusContainer}>
-                    <View 
-                      style={[
-                        styles.statusDot, 
-                        { backgroundColor: getStatusColor(member.status) }
-                      ]} 
-                    />
-                    <Text style={styles.statusText}>{getStatusText(member.status)}</Text>
+                    <Text style={[styles.statusText, isDark && styles.statusTextDark]}>{getStatusText(member.status)}</Text>
                   </View>
                 </View>
                 <View style={styles.performanceContainer}>
@@ -443,57 +550,29 @@ export default function TeamTab() {
 
         {/* Quick Actions */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Actions rapides</Text>
+          <Text style={[styles.sectionTitle, isDark && styles.sectionTitleDark]}>Actions rapides</Text>
           
-          <TouchableOpacity 
-            style={styles.quickActionCard}
-            onPress={() => setShowAddMemberModal(true)}
-          >
-            <View style={styles.quickActionIcon}>
-              <UserPlus color="#3b82f6" size={20} strokeWidth={2} />
-            </View>
-            <Text style={styles.quickActionText}>Ajouter un employé</Text>
-          </TouchableOpacity>
+          <View style={styles.quickActionsGrid}>
+            <TouchableOpacity 
+              style={[styles.quickActionCard, isDark && styles.quickActionCardDark]}
+              onPress={() => router.push('/rayon-planning')}
+            >
+              <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(245, 158, 11, 0.1)' }]}>
+                <Calendar color="#f59e0b" size={20} strokeWidth={2} />
+              </View>
+              <Text style={[styles.quickActionText, isDark && styles.quickActionTextDark]}>Planning Rayon</Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={styles.quickActionCard}
-            onPress={() => setShowMeetingModal(true)}
-          >
-            <View style={styles.quickActionIcon}>
-              <Calendar color="#10b981" size={20} strokeWidth={2} />
-            </View>
-            <Text style={styles.quickActionText}>Planifier une réunion</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.quickActionCard}
-            onPress={() => router.push('/employee-schedule')}
-          >
-            <View style={styles.quickActionIcon}>
-              <Users color="#3b82f6" size={20} strokeWidth={2} />
-            </View>
-            <Text style={styles.quickActionText}>Planning Employés</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.quickActionCard}
-            onPress={() => router.push('/rayon-planning')}
-          >
-            <View style={styles.quickActionIcon}>
-              <Calendar color="#f59e0b" size={20} strokeWidth={2} />
-            </View>
-            <Text style={styles.quickActionText}>Planning Rayon</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.quickActionCard}
-            onPress={() => router.push('/employee-performance')}
-          >
-            <View style={styles.quickActionIcon}>
-              <BarChart3 color="#8b5cf6" size={20} strokeWidth={2} />
-            </View>
-            <Text style={styles.quickActionText}>Performance des employés</Text>
-          </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.quickActionCard, isDark && styles.quickActionCardDark]}
+              onPress={() => router.push('/employee-performance')}
+            >
+              <View style={[styles.quickActionIcon, { backgroundColor: 'rgba(139, 92, 246, 0.1)' }]}>
+                <BarChart3 color="#8b5cf6" size={20} strokeWidth={2} />
+              </View>
+              <Text style={[styles.quickActionText, isDark && styles.quickActionTextDark]}>Performance des employés</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
 
@@ -830,7 +909,7 @@ export default function TeamTab() {
                     }
                   }}
                 >
-                  <Plus color="#10b981" size={16} strokeWidth={2} />
+                  <Text style={styles.addPresetButtonText}>+</Text>
                 </TouchableOpacity>
               </View>
             </ScrollView>
@@ -967,74 +1046,67 @@ export default function TeamTab() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#f8fafc',
   },
   containerDark: {
-    backgroundColor: '#18181b',
+    backgroundColor: '#0f0f23',
   },
   scrollView: {
     flex: 1,
   },
   header: {
+    paddingHorizontal: 20,
+    paddingTop: 60,
+    paddingBottom: 24,
+  },
+  headerTop: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingTop: 80,
-    paddingBottom: 32,
-    position: 'relative',
+    justifyContent: 'space-between',
+    marginBottom: 24,
   },
   backButton: {
-    position: 'absolute',
-    left: 24,
-    top: 20,
-    zIndex: 10,
-    borderRadius: 8,
-    borderWidth: 2,
-    padding: 4,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  backButtonLight: {
-    backgroundColor: '#e0e7ff',
-    borderColor: '#3b82f6',
-  },
-  backButtonDark: {
-    backgroundColor: '#2563eb',
-    borderColor: '#60a5fa',
-  },
-  backButtonText: {
-    color: '#f4f4f5',
-    fontSize: 16,
-    fontWeight: '600',
+  headerTitle: {
+    flex: 1,
+    alignItems: 'center',
   },
   title: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '700',
-    color: '#1a1a1a',
-    marginTop: 16,
-    marginBottom: 8,
+    color: '#1e293b',
+    marginBottom: 4,
   },
   titleDark: {
     color: '#f4f4f5',
   },
   subtitle: {
-    fontSize: 16,
-    color: '#6b7280',
-    textAlign: 'center',
+    fontSize: 14,
+    color: '#64748b',
+    fontWeight: '500',
   },
   subtitleDark: {
-    color: '#a1a1aa',
+    color: '#94a3b8',
   },
   statsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    paddingHorizontal: 24,
+    paddingHorizontal: 20,
     gap: 12,
-    marginBottom: 32,
+    marginBottom: 24,
     justifyContent: 'space-between',
   },
   statCard: {
-    width: '48%', // Pour créer une grille 2x2
+    width: '48%',
     backgroundColor: '#ffffff',
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 16,
+    padding: 20,
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: {
@@ -1042,36 +1114,95 @@ const styles = StyleSheet.create({
       height: 2,
     },
     shadowOpacity: 0.05,
-    shadowRadius: 4,
+    shadowRadius: 8,
     elevation: 3,
-    marginBottom: 12, // Espacement vertical entre les lignes
+    marginBottom: 12,
+  },
+  statCardDark: {
+    backgroundColor: '#1e293b',
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+  },
+  statIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
   },
   statValue: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: '700',
-    color: '#1a1a1a',
-    marginTop: 8,
+    color: '#1e293b',
     marginBottom: 4,
   },
+  statValueDark: {
+    color: '#f4f4f5',
+  },
   statLabel: {
-    fontSize: 12,
-    color: '#6b7280',
-    fontWeight: '500',
+    fontSize: 13,
+    color: '#64748b',
+    fontWeight: '600',
+  },
+  statLabelDark: {
+    color: '#94a3b8',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginTop: 16,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  searchContainerDark: {
+    backgroundColor: '#1e293b',
+    shadowOpacity: 0.2,
+  },
+  searchInput: {
+    flex: 1,
+    marginLeft: 12,
+    fontSize: 16,
+    color: '#1e293b',
+  },
+  searchInputDark: {
+    color: '#f4f4f5',
+  },
+  clearSearch: {
+    fontSize: 16,
+    color: '#64748b',
+    fontWeight: '600',
+  },
+  clearSearchDark: {
+    color: '#94a3b8',
   },
   section: {
-    paddingHorizontal: 24,
-    marginBottom: 32,
+    paddingHorizontal: 20,
+    marginBottom: 24,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 20,
   },
   sectionTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '600',
-    color: '#1a1a1a',
+    color: '#1e293b',
+  },
+  sectionTitleDark: {
+    color: '#f4f4f5',
   },
   addButton: {
     width: 36,
@@ -1089,56 +1220,79 @@ const styles = StyleSheet.create({
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 4,
+      height: 2,
     },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.05,
     shadowRadius: 8,
-    elevation: 6,
+    elevation: 3,
+  },
+  memberCardDark: {
+    backgroundColor: '#1e293b',
+    shadowOpacity: 0.2,
   },
   memberHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 16,
   },
-  avatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+  avatarContainer: {
+    position: 'relative',
     marginRight: 16,
+  },
+  avatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+  },
+  statusIndicator: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#ffffff',
   },
   memberInfo: {
     flex: 1,
   },
   memberName: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
-    color: '#1a1a1a',
+    color: '#1e293b',
     marginBottom: 4,
+  },
+  memberNameDark: {
+    color: '#f4f4f5',
   },
   memberRole: {
     fontSize: 14,
-    color: '#6b7280',
-    marginBottom: 8,
+    color: '#64748b',
+    marginBottom: 4,
+  },
+  memberRoleDark: {
+    color: '#94a3b8',
   },
   memberSection: {
-    fontSize: 14,
-    color: '#6b7280',
+    fontSize: 13,
+    color: '#64748b',
     marginBottom: 8,
+  },
+  memberSectionDark: {
+    color: '#94a3b8',
   },
   statusContainer: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 6,
-  },
   statusText: {
     fontSize: 12,
-    color: '#6b7280',
+    color: '#64748b',
     fontWeight: '500',
+  },
+  statusTextDark: {
+    color: '#94a3b8',
   },
   performanceContainer: {
     alignItems: 'flex-end',
@@ -1205,12 +1359,16 @@ const styles = StyleSheet.create({
     color: '#f59e0b',
     fontWeight: '600',
   },
+  quickActionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
   quickActionCard: {
+    width: '48%',
     backgroundColor: '#ffffff',
     borderRadius: 12,
     padding: 16,
-    marginBottom: 12,
-    flexDirection: 'row',
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: {
@@ -1221,19 +1379,26 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 2,
   },
+  quickActionCardDark: {
+    backgroundColor: '#1e293b',
+    shadowOpacity: 0.2,
+  },
   quickActionIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#f0f9ff',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16,
+    marginBottom: 12,
   },
   quickActionText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
-    color: '#1a1a1a',
+    color: '#1e293b',
+    textAlign: 'center',
+  },
+  quickActionTextDark: {
+    color: '#f4f4f5',
   },
   modalOverlay: {
     flex: 1,
@@ -1415,6 +1580,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#bbf7d0',
   },
+  addPresetButtonText: {
+    color: '#10b981',
+    fontSize: 16,
+    fontWeight: '600',
+  },
   confirmMessageContainer: {
     marginBottom: 24,
   },
@@ -1457,29 +1627,8 @@ const styles = StyleSheet.create({
     marginTop: 15,
   },
       emptyStateSubtext: {
-      fontSize: 14,
-      color: '#9ca3af',
-      marginTop: 5,
-    },
-    shiftSelector: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      marginTop: 8,
-    },
-    shiftOption: {
-      flex: 1,
-      paddingVertical: 10,
-      paddingHorizontal: 12,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: '#d1d5db',
-      backgroundColor: '#ffffff',
-      marginHorizontal: 4,
-      alignItems: 'center',
-    },
-    shiftOptionText: {
-      fontSize: 14,
-      color: '#374151',
-      fontWeight: '500',
+    fontSize: 14,
+    color: '#9ca3af',
+    marginTop: 5,
   },
 });

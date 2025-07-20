@@ -10,6 +10,7 @@ import {
   Alert,
   Modal,
   TextInput,
+  RefreshControl,
 } from 'react-native';
 import { 
   ChevronLeft, 
@@ -29,7 +30,10 @@ import {
   Eye,
   BarChart3,
   Settings,
-  RefreshCw
+  RefreshCw,
+  TrendingUp,
+  Activity,
+  ArrowLeft
 } from 'lucide-react-native';
 import { useSupabaseAuth } from '../../hooks/useSupabaseAuth';
 import { useUserProfile } from '../../hooks/useUserProfile';
@@ -627,100 +631,103 @@ export default function RayonPlanningScreen() {
 
   return (
     <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
-      {/* Header moderne */}
-      <View style={[styles.header, isDark && styles.headerDark]}>
-        <View style={styles.headerTop}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-            <ChevronLeft color={isDark ? '#f4f4f5' : '#1a1a1a'} size={24} strokeWidth={2} />
-          </TouchableOpacity>
-          
-          <View style={styles.headerCenter}>
-            <Text style={[styles.headerTitle, isDark && styles.headerTitleDark]}>
-              Planning Rayon
-            </Text>
-            <Text style={[styles.headerSubtitle, isDark && styles.headerSubtitleDark]}>
-              {profile?.section || 'Section'}
-            </Text>
-          </View>
-          
-          <View style={styles.headerActions}>
-            <TouchableOpacity 
-              onPress={() => setShowFilters(!showFilters)}
-              style={[styles.headerButton, showFilters && styles.headerButtonActive]}
-            >
-              <Filter color={isDark ? '#f4f4f5' : '#1a1a1a'} size={20} strokeWidth={2} />
+      <ScrollView 
+        style={styles.scrollView}
+        refreshControl={
+          <RefreshControl
+            refreshing={isLoading}
+            onRefresh={() => {
+              // Refresh logic here
+            }}
+            tintColor={isDark ? "#f4f4f5" : "#3b82f6"}
+          />
+        }
+      >
+        {/* Header moderne */}
+        <View style={styles.header}>
+          <View style={styles.headerTop}>
+            <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+              <ArrowLeft color={isDark ? "#f4f4f5" : "#3b82f6"} size={24} strokeWidth={2} />
             </TouchableOpacity>
             
+            <View style={styles.headerTitle}>
+              <Text style={[styles.title, isDark && styles.titleDark]}>
+                Planning Rayon
+              </Text>
+              <Text style={[styles.subtitle, isDark && styles.subtitleDark]}>
+                {profile?.section || 'Section'} • {formatDate(currentDate)}
+              </Text>
+            </View>
+            
             <TouchableOpacity 
-              onPress={() => router.push('/employee-schedule')}
-              style={styles.headerButton}
+              onPress={() => setShowFilters(!showFilters)}
+              style={[styles.filterButton, showFilters && styles.filterButtonActive]}
             >
-              <Users color={isDark ? '#f4f4f5' : '#1a1a1a'} size={20} strokeWidth={2} />
+              <Filter color={isDark ? '#f4f4f5' : '#3b82f6'} size={20} strokeWidth={2} />
             </TouchableOpacity>
+          </View>
+
+          {/* Barre de recherche */}
+          <View style={[styles.searchContainer, isDark && styles.searchContainerDark]}>
+            <Search color={isDark ? '#94a3b8' : '#64748b'} size={20} strokeWidth={2} />
+            <TextInput
+              style={[styles.searchInput, isDark && styles.searchInputDark]}
+              placeholder="Rechercher des événements..."
+              placeholderTextColor={isDark ? '#94a3b8' : '#64748b'}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <Text style={[styles.clearSearch, isDark && styles.clearSearchDark]}>✕</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
-        {/* Barre de recherche */}
-        <View style={[styles.searchContainer, isDark && styles.searchContainerDark]}>
-          <Search color={isDark ? '#9ca3af' : '#6b7280'} size={16} strokeWidth={2} />
-          <TextInput
-            style={[styles.searchInput, isDark && styles.searchInputDark]}
-            placeholder="Rechercher des événements..."
-            placeholderTextColor={isDark ? '#9ca3af' : '#6b7280'}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Text style={[styles.clearSearch, isDark && styles.clearSearchDark]}>✕</Text>
+        {/* Navigation du calendrier */}
+        <View style={styles.calendarNavigation}>
+          <View style={styles.calendarNav}>
+            <TouchableOpacity onPress={goToPreviousPeriod} style={styles.navButton}>
+              <ChevronLeft color={isDark ? '#f4f4f5' : '#3b82f6'} size={20} strokeWidth={2} />
             </TouchableOpacity>
-          )}
-        </View>
-      </View>
-
-      {/* Navigation du calendrier */}
-      <View style={[styles.calendarHeader, isDark && styles.calendarHeaderDark]}>
-        <View style={styles.calendarNav}>
-          <TouchableOpacity onPress={goToPreviousPeriod} style={styles.navButton}>
-            <ChevronLeft color={isDark ? '#f4f4f5' : '#1a1a1a'} size={20} strokeWidth={2} />
-          </TouchableOpacity>
-          
-          <TouchableOpacity onPress={goToToday} style={styles.todayButton}>
-            <Text style={styles.todayButtonText}>Aujourd'hui</Text>
-          </TouchableOpacity>
-          
-          <Text style={[styles.periodTitle, isDark && styles.periodTitleDark]}>
-            {viewMode === 'week' 
-              ? `${formatDate(weekDays[0])} - ${formatDate(weekDays[6])}`
-              : formatDate(currentDate)
-            }
-          </Text>
-          
-          <TouchableOpacity onPress={goToNextPeriod} style={styles.navButton}>
-            <ChevronRight color={isDark ? '#f4f4f5' : '#1a1a1a'} size={20} strokeWidth={2} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Sélecteur de vue */}
-        <View style={styles.viewSelector}>
-          <TouchableOpacity 
-            style={[styles.viewButton, viewMode === 'week' && styles.viewButtonActive]}
-            onPress={() => setViewMode('week')}
-          >
-            <Text style={[styles.viewButtonText, viewMode === 'week' && styles.viewButtonTextActive]}>
-              Semaine
+            
+            <TouchableOpacity onPress={goToToday} style={styles.todayButton}>
+              <Text style={styles.todayButtonText}>Aujourd'hui</Text>
+            </TouchableOpacity>
+            
+            <Text style={[styles.periodTitle, isDark && styles.periodTitleDark]}>
+              {viewMode === 'week' 
+                ? `${formatDate(weekDays[0])} - ${formatDate(weekDays[6])}`
+                : formatDate(currentDate)
+              }
             </Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.viewButton, viewMode === 'day' && styles.viewButtonActive]}
-            onPress={() => setViewMode('day')}
-          >
-            <Text style={[styles.viewButtonText, viewMode === 'day' && styles.viewButtonTextActive]}>
-              Jour
-            </Text>
-          </TouchableOpacity>
+            
+            <TouchableOpacity onPress={goToNextPeriod} style={styles.navButton}>
+              <ChevronRight color={isDark ? '#f4f4f5' : '#3b82f6'} size={20} strokeWidth={2} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Sélecteur de vue */}
+          <View style={styles.viewSelector}>
+            <TouchableOpacity 
+              style={[styles.viewButton, viewMode === 'week' && styles.viewButtonActive]}
+              onPress={() => setViewMode('week')}
+            >
+              <Text style={[styles.viewButtonText, viewMode === 'week' && styles.viewButtonTextActive]}>
+                Semaine
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.viewButton, viewMode === 'day' && styles.viewButtonActive]}
+              onPress={() => setViewMode('day')}
+            >
+              <Text style={[styles.viewButtonText, viewMode === 'day' && styles.viewButtonTextActive]}>
+                Jour
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
 
       {/* Sélecteur de présets d'horaires */}
       <WorkingHoursPresets
@@ -901,94 +908,92 @@ export default function RayonPlanningScreen() {
         </View>
       </ScrollView>
 
-      {/* Statistiques */}
-      <View style={[styles.statsContainer, isDark && styles.statsContainerDark]}>
-        <View style={[styles.statCard, isDark && styles.statCardDark]}>
-          <Target color="#10b981" size={20} strokeWidth={2} />
-          <Text style={[styles.statValue, isDark && styles.statValueDark]}>
-            {totalTasks}
-          </Text>
-          <Text style={[styles.statLabel, isDark && styles.statLabelDark]}>Tâches</Text>
-        </View>
-        
-        <View style={[styles.statCard, isDark && styles.statCardDark]}>
-          <Coffee color="#3b82f6" size={20} strokeWidth={2} />
-          <Text style={[styles.statValue, isDark && styles.statValueDark]}>
-            {totalBreaks}
-          </Text>
-          <Text style={[styles.statLabel, isDark && styles.statLabelDark]}>Pauses</Text>
-        </View>
-        
-        <View style={[styles.statCard, isDark && styles.statCardDark]}>
-          <Users color="#f59e0b" size={20} strokeWidth={2} />
-          <Text style={[styles.statValue, isDark && styles.statValueDark]}>
-            {totalEmployees}
-          </Text>
-          <Text style={[styles.statLabel, isDark && styles.statLabelDark]}>Employés</Text>
+        {/* Statistiques */}
+        <View style={styles.statsContainer}>
+          <View style={[styles.statCard, isDark && styles.statCardDark]}>
+            <View style={[styles.statIcon, { backgroundColor: 'rgba(16, 185, 129, 0.1)' }]}>
+              <Target color="#10b981" size={20} strokeWidth={2} />
+            </View>
+            <Text style={[styles.statValue, isDark && styles.statValueDark]}>
+              {totalTasks}
+            </Text>
+            <Text style={[styles.statLabel, isDark && styles.statLabelDark]}>Tâches</Text>
+          </View>
+          
+          <View style={[styles.statCard, isDark && styles.statCardDark]}>
+            <View style={[styles.statIcon, { backgroundColor: 'rgba(59, 130, 246, 0.1)' }]}>
+              <Coffee color="#3b82f6" size={20} strokeWidth={2} />
+            </View>
+            <Text style={[styles.statValue, isDark && styles.statValueDark]}>
+              {totalBreaks}
+            </Text>
+            <Text style={[styles.statLabel, isDark && styles.statLabelDark]}>Pauses</Text>
+          </View>
+          
+          <View style={[styles.statCard, isDark && styles.statCardDark]}>
+            <View style={[styles.statIcon, { backgroundColor: 'rgba(245, 158, 11, 0.1)' }]}>
+              <Users color="#f59e0b" size={20} strokeWidth={2} />
+            </View>
+            <Text style={[styles.statValue, isDark && styles.statValueDark]}>
+              {totalEmployees}
+            </Text>
+            <Text style={[styles.statLabel, isDark && styles.statLabelDark]}>Employés</Text>
+          </View>
+
+          <View style={[styles.statCard, isDark && styles.statCardDark]}>
+            <View style={[styles.statIcon, { backgroundColor: 'rgba(139, 92, 246, 0.1)' }]}>
+              <Calendar color="#8b5cf6" size={20} strokeWidth={2} />
+            </View>
+            <Text style={[styles.statValue, isDark && styles.statValueDark]}>
+              {totalRecurringEvents}
+            </Text>
+            <Text style={[styles.statLabel, isDark && styles.statLabelDark]}>Récurrents</Text>
+          </View>
         </View>
 
-        <View style={[styles.statCard, isDark && styles.statCardDark]}>
-          <Calendar color="#8b5cf6" size={20} strokeWidth={2} />
-          <Text style={[styles.statValue, isDark && styles.statValueDark]}>
-            {totalRecurringEvents}
-          </Text>
-          <Text style={[styles.statLabel, isDark && styles.statLabelDark]}>Récurrents</Text>
+        {/* Actions rapides */}
+        <View style={styles.actionsContainer}>
+          <Text style={[styles.sectionTitle, isDark && styles.sectionTitleDark]}>Actions rapides</Text>
+          
+          <View style={styles.actionsGrid}>
+            <TouchableOpacity 
+              style={[styles.actionCard, isDark && styles.actionCardDark]} 
+              onPress={() => router.push('/(manager-tabs)/calculator')}
+            >
+              <View style={[styles.actionIcon, { backgroundColor: 'rgba(6, 182, 212, 0.1)' }]}>
+                <Calculator color="#06b6d4" size={20} strokeWidth={2} />
+              </View>
+              <Text style={[styles.actionTitle, isDark && styles.actionTitleDark]}>
+                Calculer une tâche
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.actionCard, isDark && styles.actionCardDark]} 
+              onPress={() => router.push('/(manager-tabs)/efficiency')}
+            >
+              <View style={[styles.actionIcon, { backgroundColor: 'rgba(139, 92, 246, 0.1)' }]}>
+                <BarChart3 color="#8b5cf6" size={20} strokeWidth={2} />
+              </View>
+              <Text style={[styles.actionTitle, isDark && styles.actionTitleDark]}>
+                Voir les performances
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.actionCard, isDark && styles.actionCardDark]} 
+              onPress={() => setShowDelaySelectionModal(true)}
+            >
+              <View style={[styles.actionIcon, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]}>
+                <Clock color="#ef4444" size={20} strokeWidth={2} />
+              </View>
+              <Text style={[styles.actionTitle, isDark && styles.actionTitleDark]}>
+                Signaler un retard
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
-
-      {/* Actions rapides */}
-      <View style={[styles.actionsContainer, isDark && styles.actionsContainerDark]}>
-        <TouchableOpacity 
-          style={[styles.actionCard, isDark && styles.actionCardDark]} 
-          onPress={() => router.push('/(manager-tabs)/calculator')}
-        >
-          <View style={[styles.actionIcon, { backgroundColor: '#06b6d4' }]}>
-            <Calculator color="#ffffff" size={20} strokeWidth={2} />
-          </View>
-          <View style={styles.actionContent}>
-            <Text style={[styles.actionTitle, isDark && styles.actionTitleDark]}>
-              Calculer une tâche
-            </Text>
-            <Text style={[styles.actionSubtitle, isDark && styles.actionSubtitleDark]}>
-              Estimer le temps et les ressources
-            </Text>
-          </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[styles.actionCard, isDark && styles.actionCardDark]} 
-          onPress={() => router.push('/(manager-tabs)/efficiency')}
-        >
-          <View style={[styles.actionIcon, { backgroundColor: '#8b5cf6' }]}>
-            <BarChart3 color="#ffffff" size={20} strokeWidth={2} />
-          </View>
-          <View style={styles.actionContent}>
-            <Text style={[styles.actionTitle, isDark && styles.actionTitleDark]}>
-              Voir les performances
-            </Text>
-            <Text style={[styles.actionSubtitle, isDark && styles.actionSubtitleDark]}>
-              Analyser l'efficacité de l'équipe
-            </Text>
-          </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[styles.actionCard, isDark && styles.actionCardDark]} 
-          onPress={() => setShowDelaySelectionModal(true)}
-        >
-          <View style={[styles.actionIcon, { backgroundColor: '#ef4444' }]}>
-            <Clock color="#ffffff" size={20} strokeWidth={2} />
-          </View>
-          <View style={styles.actionContent}>
-            <Text style={[styles.actionTitle, isDark && styles.actionTitleDark]}>
-              Signaler un retard
-            </Text>
-            <Text style={[styles.actionSubtitle, isDark && styles.actionSubtitleDark]}>
-              Indiquer un retard sur une tâche
-            </Text>
-          </View>
-        </TouchableOpacity>
-      </View>
+      </ScrollView>
 
       {/* Modal de détails d'événement */}
       <Modal
@@ -1270,96 +1275,106 @@ export default function RayonPlanningScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#f8fafc',
   },
   containerDark: {
-    backgroundColor: '#18181b',
+    backgroundColor: '#0f0f23',
+  },
+  scrollView: {
+    flex: 1,
   },
   header: {
     paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
-  },
-  headerDark: {
-    borderBottomColor: '#374151',
+    paddingTop: 60,
+    paddingBottom: 24,
   },
   headerTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 20,
   },
   backButton: {
-    padding: 8,
-  },
-  headerCenter: {
-    flex: 1,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    justifyContent: 'center',
     alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#1a1a1a',
+    flex: 1,
+    alignItems: 'center',
   },
-  headerTitleDark: {
+  title: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1e293b',
+    marginBottom: 4,
+  },
+  titleDark: {
     color: '#f4f4f5',
   },
-  headerSubtitle: {
+  subtitle: {
     fontSize: 14,
-    color: '#6b7280',
-    marginTop: 2,
+    color: '#64748b',
+    fontWeight: '500',
   },
-  headerSubtitleDark: {
-    color: '#9ca3af',
+  subtitleDark: {
+    color: '#94a3b8',
   },
-  headerActions: {
-    flexDirection: 'row',
-    gap: 8,
+  filterButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(107, 114, 128, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  headerButton: {
-    padding: 8,
-    borderRadius: 8,
-  },
-  headerButtonActive: {
-    backgroundColor: '#3b82f6',
+  filterButtonActive: {
+    backgroundColor: 'rgba(59, 130, 246, 0.2)',
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#ffffff',
     borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
   },
   searchContainerDark: {
-    backgroundColor: '#27272a',
+    backgroundColor: '#1e293b',
+    shadowOpacity: 0.2,
   },
   searchInput: {
     flex: 1,
+    marginLeft: 12,
     fontSize: 16,
-    color: '#1a1a1a',
+    color: '#1e293b',
   },
   searchInputDark: {
     color: '#f4f4f5',
   },
   clearSearch: {
     fontSize: 16,
-    color: '#6b7280',
-    padding: 4,
+    color: '#64748b',
+    fontWeight: '600',
   },
   clearSearchDark: {
-    color: '#9ca3af',
+    color: '#94a3b8',
   },
-  calendarHeader: {
+  calendarNavigation: {
     paddingHorizontal: 20,
     paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
-  },
-  calendarHeaderDark: {
-    borderBottomColor: '#374151',
+    marginBottom: 16,
   },
   calendarNav: {
     flexDirection: 'row',
@@ -1368,7 +1383,12 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   navButton: {
-    padding: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   todayButton: {
     backgroundColor: '#3b82f6',
@@ -1382,9 +1402,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   periodTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1a1a1a',
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1e293b',
   },
   periodTitleDark: {
     color: '#f4f4f5',
@@ -1488,6 +1508,113 @@ const styles = StyleSheet.create({
   },
   legendTextDark: {
     color: '#9ca3af',
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 20,
+    gap: 12,
+    marginBottom: 24,
+    justifyContent: 'space-between',
+  },
+  statCard: {
+    width: '48%',
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 20,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+    marginBottom: 12,
+  },
+  statCardDark: {
+    backgroundColor: '#1e293b',
+    shadowOpacity: 0.2,
+  },
+  statIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  statValue: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1e293b',
+    marginBottom: 4,
+  },
+  statValueDark: {
+    color: '#f4f4f5',
+  },
+  statLabel: {
+    fontSize: 13,
+    color: '#64748b',
+    fontWeight: '600',
+  },
+  statLabelDark: {
+    color: '#94a3b8',
+  },
+  actionsContainer: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1e293b',
+    marginBottom: 16,
+  },
+  sectionTitleDark: {
+    color: '#f4f4f5',
+  },
+  actionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  actionCard: {
+    width: '48%',
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  actionCardDark: {
+    backgroundColor: '#1e293b',
+    shadowOpacity: 0.2,
+  },
+  actionIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  actionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1e293b',
+    textAlign: 'center',
+  },
+  actionTitleDark: {
+    color: '#f4f4f5',
   },
   calendarContainer: {
     flex: 1,

@@ -27,6 +27,7 @@ interface TaskInput {
   description?: string | null;
   start_time: string;
   end_time: string;
+  duration?: string;
   date: string;
   packages: number;
   team_size: number;
@@ -117,6 +118,8 @@ export const useSupabaseTasks = (filters: TaskFilters = {}) => {
       setError(null);
       
       console.log('🔄 [HOOK] Création de tâche:', taskData);
+      console.log('🔄 [HOOK] Type de taskData:', typeof taskData);
+      console.log('🔄 [HOOK] taskData JSON:', JSON.stringify(taskData, null, 2));
       
       // Validation des horaires de travail
       if (workingHours && !isTimeRangeWithinWorkingHours(taskData.start_time, taskData.end_time)) {
@@ -132,13 +135,23 @@ export const useSupabaseTasks = (filters: TaskFilters = {}) => {
         store_id: taskData.store_id || 1 // Par défaut, magasin 1
       };
       
+      console.log('🔄 [HOOK] Envoi à Supabase avec taskDataWithStore:', JSON.stringify(taskDataWithStore, null, 2));
+      
       const { data, error } = await supabase
         .from('scheduled_tasks')
         .insert([taskDataWithStore])
         .select()
         .single();
 
-      if (error) throw error;
+      console.log('🔄 [HOOK] Réponse Supabase:', { data, error });
+      
+      if (error) {
+        console.error('🔄 [HOOK] Erreur Supabase détaillée:', error);
+        console.error('🔄 [HOOK] Message d\'erreur:', error.message);
+        console.error('🔄 [HOOK] Détails:', error.details);
+        console.error('🔄 [HOOK] Hint:', error.hint);
+        throw error;
+      }
       
       console.log('🔄 [HOOK] Tâche créée avec succès:', data);
       
@@ -153,7 +166,16 @@ export const useSupabaseTasks = (filters: TaskFilters = {}) => {
       return { success: true, task: data };
     } catch (err) {
       console.error('Erreur lors de la création de la tâche:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Erreur inconnue';
+      console.error('Type d\'erreur:', typeof err);
+      console.error('Erreur complète:', JSON.stringify(err, null, 2));
+      
+      let errorMessage = 'Erreur inconnue';
+      if (err instanceof Error) {
+        errorMessage = err.message;
+      } else if (typeof err === 'object' && err !== null) {
+        errorMessage = JSON.stringify(err);
+      }
+      
       setError(errorMessage);
       return { success: false, error: errorMessage };
     }

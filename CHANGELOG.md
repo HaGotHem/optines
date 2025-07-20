@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.0.12] - 2025-07-20
+
+### 📊 Résumé des modifications
+- **Total des modifications:** 24
+- **Fichiers modifiés:** 14
+
+### 🔄 Derniers commits
+- `6fe109d` 🚀 Release v1.0.11 - Mise à jour automatique
+- `fad80a0` 🚀 Release v1.0.8 - Mise à jour automatique
+- `58127d8` 🚀 Release v1.0.7 - Mise à jour automatique
+- `e09489d` 🚀 Release v1.0.10 - Mise à jour automatique
+- `fc90afc` 🚀 Release v1.0.9 - Mise à jour automatique
+- `25f8dfa` 🚀 Release v1.0.8 - Mise à jour automatique
+- `c59c60a` 🚀 Release v1.0.7 - Mise à jour automatique
+- `8ed734b` 🚀 Release v1.0.6 - Mise à jour automatique
+- `0197bb8` 🚀 Release v1.0.5 - Mise à jour automatique
+- `780fcf1` 🚀 Release v1.0.4 - Mise à jour automatique
+
+
 ## [1.0.11] - 2025-07-20
 
 ### 📊 Résumé des modifications
@@ -275,4 +294,29 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 ### 🔧 Corrections techniques
 - Utilisation de labels (`goto`) pour éviter les problèmes de syntaxe
 - Support de multiples formats de confirmation
-- Gestion d'erreur améliorée dans les scripts batch 
+- Gestion d'erreur améliorée dans les scripts batch
+
+## [1.0.12] - 2024-12-19
+
+### 🤖 Système d'automatisation des releases
+- **Surveillance automatique** : Vérification toutes les 5 minutes
+- **Mode daemon** : Fonctionnement en arrière-plan
+- **Logs détaillés** : Toutes les actions enregistrées avec horodatage
+- **Interface complète** : Scripts npm et batch pour la gestion
+
+### 📦 Nouveaux scripts
+- `npm run auto-watcher` - Surveillance interactive
+- `npm run auto-watcher-start` - Démarrer le daemon
+- `npm run auto-watcher-stop` - Arrêter le daemon
+- `npm run auto-watcher-status` - Afficher le statut
+- `npm run auto-watcher-logs` - Afficher les logs
+- `npm run auto-watcher-check` - Vérification unique
+
+### 🔧 Scripts batch
+- `auto-release.bat` - Interface de gestion complète
+- Intégration dans `start.bat` avec options 4 et 5
+
+### 📚 Documentation
+- Guide complet d'automatisation : `guides/GUIDE_AUTOMATISATION_RELEASES.md`
+- Instructions détaillées pour tous les modes
+- Dépannage et configuration avancée 

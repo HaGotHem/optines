@@ -1,56 +1,65 @@
 const { createClient } = require('@supabase/supabase-js');
-const fs = require('fs');
-const path = require('path');
 
-// Configuration Supabase directe
+// Configuration Supabase avec la clé anonyme (pour les opérations de lecture)
 const supabaseUrl = 'https://vqwgnvrhcaosnjczuwth.supabase.co';
-const supabaseServiceKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZxd2dudnJoY2Fvc25qY3p1d3RoIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MTk4NzQyNCwiZXhwIjoyMDY3NTYzNDI0fQ.H_YkS5VWgYY2c9-F08b5gz_2ofJGclXyM00BXZzz9Mk';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZxd2dudnJoY2Fvc25qY3p1d3RoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE5ODc0MjQsImV4cCI6MjA2NzU2MzQyNH0.3R5XkNZGMLmLUI1A5iExLnhsIyiwIyz0Azu7eInQHq4';
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-async function createBreaksTable() {
-  console.log('🚀 Création de la table breaks...');
-
+async function checkAndCreateBreaksTable() {
   try {
-    // Vérifier si la table existe déjà
-    const { data: existingTable, error: checkError } = await supabase
+    console.log('🔍 Vérification de l\'existence de la table breaks...');
+
+    // Essayer d'accéder à la table breaks
+    const { data, error } = await supabase
       .from('breaks')
       .select('id')
       .limit(1);
 
-    if (checkError && checkError.message.includes('does not exist')) {
-      console.log('📋 La table breaks n\'existe pas, création en cours...');
-      
-      // Lire le fichier SQL
-      const sqlPath = path.join(__dirname, '../supabase/create-breaks-table-simple.sql');
-      const sqlContent = fs.readFileSync(sqlPath, 'utf8');
-      
-      console.log('💡 Veuillez exécuter manuellement ce SQL dans l\'éditeur Supabase:');
-      console.log('📋 Allez sur: https://vqwgnvrhcaosnjczuwth.supabase.co/project/vqwgnvrhcaosnjczuwth/sql/new');
-      console.log('📋 Copiez et collez le contenu du fichier: supabase/create-breaks-table-simple.sql');
-      console.log('');
-      console.log('📄 Contenu du fichier SQL:');
-      console.log('=' .repeat(80));
-      console.log(sqlContent);
-      console.log('=' .repeat(80));
-      
-      return;
-    } else {
-      console.log('✅ La table breaks existe déjà !');
+    if (error) {
+      if (error.message.includes('does not exist')) {
+        console.log('⚠️ La table breaks n\'existe pas encore');
+        console.log('📝 Pour créer la table breaks, vous devez:');
+        console.log('1. Aller sur https://supabase.com/dashboard/project/vqwgnvrhcaosnjczuwth');
+        console.log('2. Cliquer sur "SQL Editor" dans le menu de gauche');
+        console.log('3. Exécuter le script SQL suivant:');
+        console.log('');
+        console.log('-- Créer la table breaks');
+        console.log('CREATE TABLE IF NOT EXISTS public.breaks (');
+        console.log('    id SERIAL PRIMARY KEY,');
+        console.log('    employee_id INTEGER NOT NULL REFERENCES public.team_members(id) ON DELETE CASCADE,');
+        console.log('    start_time TIME NOT NULL,');
+        console.log('    end_time TIME NOT NULL,');
+        console.log('    date DATE NOT NULL,');
+        console.log('    break_type VARCHAR(50) NOT NULL DEFAULT \'pause\' CHECK (break_type IN (\'pause\', \'dejeuner\', \'cafe\')),');
+        console.log('    description TEXT,');
+        console.log('    repeat_days INTEGER[] DEFAULT \'{}\',');
+        console.log('    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),');
+        console.log('    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()');
+        console.log(');');
+        console.log('');
+        console.log('-- Créer les index');
+        console.log('CREATE INDEX IF NOT EXISTS idx_breaks_employee_id ON public.breaks(employee_id);');
+        console.log('CREATE INDEX IF NOT EXISTS idx_breaks_date ON public.breaks(date);');
+        console.log('CREATE INDEX IF NOT EXISTS idx_breaks_employee_date ON public.breaks(employee_id, date);');
+        console.log('');
+        console.log('-- Activer RLS');
+        console.log('ALTER TABLE public.breaks ENABLE ROW LEVEL SECURITY;');
+        console.log('');
+        console.log('-- Créer la politique RLS');
+        console.log('CREATE POLICY "Enable all access for authenticated users" ON public.breaks');
+        console.log('    FOR ALL USING (auth.role() = \'authenticated\');');
+        console.log('');
+        console.log('✅ Après avoir exécuté ce script, l\'erreur 404 devrait disparaître');
+        return;
+      } else {
+        console.error('❌ Erreur lors de la vérification:', error);
+        return;
+      }
     }
 
-    // Vérifier que la table existe maintenant
-    const { data: tables, error: listError } = await supabase
-      .from('breaks')
-      .select('id')
-      .limit(1);
-
-    if (listError) {
-      console.error('❌ Erreur lors de la vérification:', listError);
-      return;
-    }
-
-    console.log('✅ Vérification : La table breaks existe bien !');
+    console.log('✅ La table breaks existe déjà et est accessible!');
+    console.log('📊 Nombre d\'enregistrements dans la table:', data ? data.length : 0);
 
   } catch (error) {
     console.error('❌ Erreur inattendue:', error);
@@ -58,12 +67,4 @@ async function createBreaksTable() {
 }
 
 // Exécuter le script
-createBreaksTable()
-  .then(() => {
-    console.log('🎉 Script terminé !');
-    process.exit(0);
-  })
-  .catch((error) => {
-    console.error('💥 Erreur fatale:', error);
-    process.exit(1);
-  }); 
+checkAndCreateBreaksTable(); 

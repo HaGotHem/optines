@@ -1,0 +1,139 @@
+[2025-07-20T04:17:49.166Z] 📊 STATUT DU SYSTÈME DE RELEASE AUTOMATIQUE
+[2025-07-20T04:17:49.167Z] 📦 Version actuelle: 1.0.11
+[2025-07-20T04:17:49.168Z] 📊 Modifications actuelles: 4
+[2025-07-20T04:17:49.168Z] 🎯 Seuil pour release: 20
+[2025-07-20T04:17:49.168Z] ⏳ 16 modification(s) restante(s) avant la prochaine release
+[2025-07-20T04:17:49.168Z] ❌ Aucun daemon actif
+[2025-07-20T04:17:52.012Z] 🔍 Vérification automatique des modifications...
+[2025-07-20T04:17:52.055Z] 📊 Modifications détectées: 5
+[2025-07-20T04:17:52.056Z] 📦 Version actuelle: 1.0.11
+[2025-07-20T04:17:52.056Z] ⏳ 15 modification(s) restante(s) avant la prochaine release automatique
+[2025-07-20T04:18:46.025Z] 📊 STATUT DU SYSTÈME DE RELEASE AUTOMATIQUE
+[2025-07-20T04:18:46.026Z] 📦 Version actuelle: 1.0.11
+[2025-07-20T04:18:46.026Z] 📊 Modifications actuelles: 7
+[2025-07-20T04:18:46.027Z] 🎯 Seuil pour release: 20
+[2025-07-20T04:18:46.027Z] ⏳ 13 modification(s) restante(s) avant la prochaine release
+[2025-07-20T04:18:46.027Z] ❌ Aucun daemon actif
+[2025-07-20T04:21:04.917Z] 📊 STATUT DU SYSTÈME DE RELEASE AUTOMATIQUE
+[2025-07-20T04:21:04.917Z] 📦 Version actuelle: 1.0.11
+[2025-07-20T04:21:04.918Z] 📊 Modifications actuelles: 7
+[2025-07-20T04:21:04.918Z] 🎯 Seuil pour release: 20
+[2025-07-20T04:21:04.918Z] ⏳ 13 modification(s) restante(s) avant la prochaine release
+[2025-07-20T04:21:04.918Z] ❌ Aucun daemon actif
+[2025-07-20T04:21:15.968Z] 👻 Démarrage en mode daemon...
+[2025-07-20T04:21:15.975Z] ✅ Processus daemon démarré avec PID: 30892
+[2025-07-20T04:21:15.975Z] 📝 Vérifiez les logs dans: C:\Users\thoma\Desktop\optines-main\auto-release.log
+[2025-07-20T04:21:15.998Z] 🚀 Démarrage du système de surveillance automatique des releases...
+[2025-07-20T04:21:15.999Z] ⏰ Intervalle de vérification: 5 minutes
+[2025-07-20T04:21:15.999Z] 🎯 Seuil de modifications: 20
+[2025-07-20T04:21:16.000Z] 📝 Logs: C:\Users\thoma\Desktop\optines-main\auto-release.log
+[2025-07-20T04:21:16.000Z] 🔄 Surveillance en cours... (Ctrl+C pour arrêter)
+[2025-07-20T04:21:16.000Z] 🔍 Vérification automatique des modifications...
+[2025-07-20T04:21:16.253Z] 📊 Modifications détectées: 8
+[2025-07-20T04:21:16.253Z] 📦 Version actuelle: 1.0.11
+[2025-07-20T04:21:16.253Z] ⏳ 12 modification(s) restante(s) avant la prochaine release automatique
+[2025-07-20T04:25:15.644Z] 📊 STATUT DU SYSTÈME DE RELEASE AUTOMATIQUE
+[2025-07-20T04:25:15.645Z] 📦 Version actuelle: 1.0.11
+[2025-07-20T04:25:15.646Z] 📊 Modifications actuelles: 9
+[2025-07-20T04:25:15.646Z] 🎯 Seuil pour release: 20
+[2025-07-20T04:25:15.646Z] ⏳ 11 modification(s) restante(s) avant la prochaine release
+[2025-07-20T04:25:15.647Z] 👻 Daemon actif avec PID: 30892
+[2025-07-20T04:25:22.492Z] 📊 STATUT DU SYSTÈME DE RELEASE AUTOMATIQUE
+[2025-07-20T04:25:22.493Z] 📦 Version actuelle: 1.0.11
+[2025-07-20T04:25:22.493Z] 📊 Modifications actuelles: 9
+[2025-07-20T04:25:22.493Z] 🎯 Seuil pour release: 20
+[2025-07-20T04:25:22.493Z] ⏳ 11 modification(s) restante(s) avant la prochaine release
+[2025-07-20T04:25:22.494Z] 👻 Daemon actif avec PID: 30892
+[2025-07-20T04:26:16.267Z] 🔍 Vérification automatique des modifications...
+[2025-07-20T04:26:16.582Z] 📊 Modifications détectées: 9
+[2025-07-20T04:26:16.583Z] 📦 Version actuelle: 1.0.11
+[2025-07-20T04:26:16.583Z] ⏳ 11 modification(s) restante(s) avant la prochaine release automatique
+[2025-07-20T04:31:16.271Z] 🔍 Vérification automatique des modifications...
+[2025-07-20T04:31:16.555Z] 📊 Modifications détectées: 9
+[2025-07-20T04:31:16.555Z] 📦 Version actuelle: 1.0.11
+[2025-07-20T04:31:16.556Z] ⏳ 11 modification(s) restante(s) avant la prochaine release automatique
+[2025-07-20T04:36:16.271Z] 🔍 Vérification automatique des modifications...
+[2025-07-20T04:36:16.603Z] 📊 Modifications détectées: 15
+[2025-07-20T04:36:16.603Z] 📦 Version actuelle: 1.0.11
+[2025-07-20T04:36:16.603Z] ⏳ 5 modification(s) restante(s) avant la prochaine release automatique
+[2025-07-20T04:41:16.275Z] 🔍 Vérification automatique des modifications...
+[2025-07-20T04:41:16.572Z] 📊 Modifications détectées: 18
+[2025-07-20T04:41:16.572Z] 📦 Version actuelle: 1.0.11
+[2025-07-20T04:41:16.572Z] ⏳ 2 modification(s) restante(s) avant la prochaine release automatique
+[2025-07-20T04:46:16.286Z] 🔍 Vérification automatique des modifications...
+[2025-07-20T04:46:16.550Z] 📊 Modifications détectées: 18
+[2025-07-20T04:46:16.550Z] 📦 Version actuelle: 1.0.11
+[2025-07-20T04:46:16.551Z] ⏳ 2 modification(s) restante(s) avant la prochaine release automatique
+[2025-07-20T04:51:16.301Z] 🔍 Vérification automatique des modifications...
+[2025-07-20T04:51:16.650Z] 📊 Modifications détectées: 19
+[2025-07-20T04:51:16.650Z] 📦 Version actuelle: 1.0.11
+[2025-07-20T04:51:16.651Z] ⏳ 1 modification(s) restante(s) avant la prochaine release automatique
+[2025-07-20T04:56:16.313Z] 🔍 Vérification automatique des modifications...
+[2025-07-20T04:56:16.661Z] 📊 Modifications détectées: 19
+[2025-07-20T04:56:16.662Z] 📦 Version actuelle: 1.0.11
+[2025-07-20T04:56:16.662Z] ⏳ 1 modification(s) restante(s) avant la prochaine release automatique
+[2025-07-20T05:01:16.318Z] 🔍 Vérification automatique des modifications...
+[2025-07-20T05:01:16.664Z] 📊 Modifications détectées: 19
+[2025-07-20T05:01:16.665Z] 📦 Version actuelle: 1.0.11
+[2025-07-20T05:01:16.665Z] ⏳ 1 modification(s) restante(s) avant la prochaine release automatique
+[2025-07-20T05:06:16.323Z] 🔍 Vérification automatique des modifications...
+[2025-07-20T05:06:16.656Z] 📊 Modifications détectées: 19
+[2025-07-20T05:06:16.656Z] 📦 Version actuelle: 1.0.11
+[2025-07-20T05:06:16.656Z] ⏳ 1 modification(s) restante(s) avant la prochaine release automatique
+[2025-07-20T05:11:16.328Z] 🔍 Vérification automatique des modifications...
+[2025-07-20T05:11:16.658Z] 📊 Modifications détectées: 21
+[2025-07-20T05:11:16.658Z] 📦 Version actuelle: 1.0.11
+[2025-07-20T05:11:16.658Z] 🎯 Seuil atteint (20 modifications)! Création automatique d'une release...
+[2025-07-20T05:11:16.659Z] ❌ Erreur lors de la vérification automatique: createRelease is not a function
+[2025-07-20T05:16:16.337Z] 🔍 Vérification automatique des modifications...
+[2025-07-20T05:16:16.668Z] 📊 Modifications détectées: 21
+[2025-07-20T05:16:16.668Z] 📦 Version actuelle: 1.0.11
+[2025-07-20T05:16:16.668Z] 🎯 Seuil atteint (20 modifications)! Création automatique d'une release...
+[2025-07-20T05:16:16.669Z] ❌ Erreur lors de la vérification automatique: createRelease is not a function
+[2025-07-20T05:21:16.347Z] 🔍 Vérification automatique des modifications...
+[2025-07-20T05:21:16.649Z] 📊 Modifications détectées: 21
+[2025-07-20T05:21:16.650Z] 📦 Version actuelle: 1.0.11
+[2025-07-20T05:21:16.650Z] 🎯 Seuil atteint (20 modifications)! Création automatique d'une release...
+[2025-07-20T05:21:16.650Z] ❌ Erreur lors de la vérification automatique: createRelease is not a function
+[2025-07-20T05:26:16.354Z] 🔍 Vérification automatique des modifications...
+[2025-07-20T05:26:16.691Z] 📊 Modifications détectées: 21
+[2025-07-20T05:26:16.691Z] 📦 Version actuelle: 1.0.11
+[2025-07-20T05:26:16.691Z] 🎯 Seuil atteint (20 modifications)! Création automatique d'une release...
+[2025-07-20T05:26:16.691Z] ❌ Erreur lors de la vérification automatique: createRelease is not a function
+[2025-07-20T05:31:16.358Z] 🔍 Vérification automatique des modifications...
+[2025-07-20T05:31:16.737Z] 📊 Modifications détectées: 21
+[2025-07-20T05:31:16.737Z] 📦 Version actuelle: 1.0.11
+[2025-07-20T05:31:16.737Z] 🎯 Seuil atteint (20 modifications)! Création automatique d'une release...
+[2025-07-20T05:31:16.737Z] ❌ Erreur lors de la vérification automatique: createRelease is not a function
+[2025-07-20T05:36:16.363Z] 🔍 Vérification automatique des modifications...
+[2025-07-20T05:36:16.714Z] 📊 Modifications détectées: 23
+[2025-07-20T05:36:16.715Z] 📦 Version actuelle: 1.0.11
+[2025-07-20T05:36:16.715Z] 🎯 Seuil atteint (20 modifications)! Création automatique d'une release...
+[2025-07-20T05:36:16.715Z] ❌ Erreur lors de la vérification automatique: createRelease is not a function
+[2025-07-20T05:41:16.371Z] 🔍 Vérification automatique des modifications...
+[2025-07-20T05:41:16.728Z] 📊 Modifications détectées: 23
+[2025-07-20T05:41:16.729Z] 📦 Version actuelle: 1.0.11
+[2025-07-20T05:41:16.729Z] 🎯 Seuil atteint (20 modifications)! Création automatique d'une release...
+[2025-07-20T05:41:16.730Z] ❌ Erreur lors de la vérification automatique: createRelease is not a function
+[2025-07-20T05:46:16.381Z] 🔍 Vérification automatique des modifications...
+[2025-07-20T05:46:16.657Z] 📊 Modifications détectées: 24
+[2025-07-20T05:46:16.658Z] 📦 Version actuelle: 1.0.11
+[2025-07-20T05:46:16.658Z] 🎯 Seuil atteint (20 modifications)! Création automatique d'une release...
+[2025-07-20T05:46:16.658Z] ❌ Erreur lors de la vérification automatique: createRelease is not a function
+[2025-07-20T05:46:48.160Z] 📊 STATUT DU SYSTÈME DE RELEASE AUTOMATIQUE
+[2025-07-20T05:46:48.161Z] 📦 Version actuelle: 1.0.11
+[2025-07-20T05:46:48.161Z] 📊 Modifications actuelles: 24
+[2025-07-20T05:46:48.161Z] 🎯 Seuil pour release: 20
+[2025-07-20T05:46:48.162Z] ✅ Prêt pour une release automatique!
+[2025-07-20T05:46:48.162Z] 👻 Daemon actif avec PID: 30892
+[2025-07-20T05:46:53.524Z] 🚀 Démarrage du système de surveillance automatique des releases...
+[2025-07-20T05:46:53.525Z] ⏰ Intervalle de vérification: 5 minutes
+[2025-07-20T05:46:53.525Z] 🎯 Seuil de modifications: 20
+[2025-07-20T05:46:53.525Z] 📝 Logs: C:\Users\thoma\Desktop\optines-main\auto-release.log
+[2025-07-20T05:46:53.525Z] 🔄 Surveillance en cours... (Ctrl+C pour arrêter)
+[2025-07-20T05:46:53.526Z] 🔍 Vérification automatique des modifications...
+[2025-07-20T05:46:53.565Z] 📊 Modifications détectées: 24
+[2025-07-20T05:46:53.565Z] 📦 Version actuelle: 1.0.11
+[2025-07-20T05:46:53.566Z] 🎯 Seuil atteint (20 modifications)! Création automatique d'une release...
+[2025-07-20T05:46:53.566Z] ❌ Erreur lors de la vérification automatique: createRelease is not a function
+[2025-07-20T05:47:01.362Z] 🛑 Arrêt du système de surveillance...

@@ -1,7 +1,7 @@
 {
   "name": "bolt-expo-starter",
   "main": "expo-router/entry",
-  "version": "1.0.11",
+  "version": "1.0.12",
   "private": true,
   "scripts": {
     "start": "concurrently \"npm run server\" \"npm run dev\"",
@@ -26,7 +26,13 @@
     "check-modifications": "node scripts/check-modifications.js",
     "auto-release": "node scripts/auto-release.js",
     "force-release": "node scripts/auto-release.js --force",
-    "release": "npm run auto-release"
+    "release": "npm run auto-release",
+    "auto-watcher": "node scripts/auto-release-watcher.js",
+    "auto-watcher-start": "node scripts/auto-release-watcher.js --start",
+    "auto-watcher-stop": "node scripts/auto-release-watcher.js --stop",
+    "auto-watcher-status": "node scripts/auto-release-watcher.js --status",
+    "auto-watcher-logs": "node scripts/auto-release-watcher.js --logs",
+    "auto-watcher-check": "node scripts/auto-release-watcher.js --check"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.1.0",

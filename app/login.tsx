@@ -391,10 +391,10 @@ export default function LoginScreen() {
         >
             <View style={styles.header}>
             <TouchableOpacity 
-              onPress={() => router.back()}
+              onPress={() => router.replace('/')}
                 style={[styles.backButton, isDark && { backgroundColor: '#18181b', borderColor: '#27272a' }]}
               activeOpacity={0.7}
-                accessibilityLabel="Retour"
+                accessibilityLabel="Retour à la sélection"
             >
                 <ArrowLeft size={24} color={isDark ? '#fff' : '#222'} />
             </TouchableOpacity>

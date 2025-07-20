@@ -123,8 +123,11 @@ export class PerformanceService {
   private static calculateAlerts(tasks: ScheduledTask[], performance: number): number {
     let alerts = 0;
     
-    // Alerte si performance faible
-    if (performance < 70) alerts++;
+    // Ne pas générer d'alertes si pas de vraies tâches
+    if (tasks.length === 0) return 0;
+    
+    // Alerte si performance faible (seulement si il y a des colis à traiter)
+    if (performance < 70 && tasks.some(task => task.packages > 0)) alerts++;
     
     // Alerte si beaucoup de tâches en retard
     const overdueTasks = tasks.filter(task => {

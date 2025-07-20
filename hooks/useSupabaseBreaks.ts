@@ -52,6 +52,18 @@ export function useSupabaseBreaks(filters?: BreakFilters) {
       setIsLoading(true);
       setError(null);
 
+      // Vérifier si la table breaks existe
+      const { data: tableExists, error: tableError } = await supabase
+        .from('breaks')
+        .select('id')
+        .limit(1);
+
+      if (tableError && tableError.message.includes('does not exist')) {
+        console.log('⚠️ useSupabaseBreaks - Table breaks n\'existe pas encore');
+        setBreaks([]);
+        return;
+      }
+
       let query = supabase
         .from('breaks')
         .select('*')
@@ -102,6 +114,17 @@ export function useSupabaseBreaks(filters?: BreakFilters) {
     try {
       setError(null);
 
+      // Vérifier si la table breaks existe
+      const { data: tableExists, error: tableError } = await supabase
+        .from('breaks')
+        .select('id')
+        .limit(1);
+
+      if (tableError && tableError.message.includes('does not exist')) {
+        console.log('⚠️ useSupabaseBreaks - Table breaks n\'existe pas encore, impossible de créer une pause');
+        return { success: false, error: 'Table breaks non disponible' };
+      }
+
       const { data, error: createError } = await supabase
         .from('breaks')
         .insert([breakData])
@@ -127,6 +150,17 @@ export function useSupabaseBreaks(filters?: BreakFilters) {
   const updateBreak = async (breakId: number, updates: UpdateBreakData) => {
     try {
       setError(null);
+
+      // Vérifier si la table breaks existe
+      const { data: tableExists, error: tableError } = await supabase
+        .from('breaks')
+        .select('id')
+        .limit(1);
+
+      if (tableError && tableError.message.includes('does not exist')) {
+        console.log('⚠️ useSupabaseBreaks - Table breaks n\'existe pas encore, impossible de mettre à jour une pause');
+        return { success: false, error: 'Table breaks non disponible' };
+      }
 
       const { data, error: updateError } = await supabase
         .from('breaks')
@@ -158,6 +192,17 @@ export function useSupabaseBreaks(filters?: BreakFilters) {
     try {
       setError(null);
 
+      // Vérifier si la table breaks existe
+      const { data: tableExists, error: tableError } = await supabase
+        .from('breaks')
+        .select('id')
+        .limit(1);
+
+      if (tableError && tableError.message.includes('does not exist')) {
+        console.log('⚠️ useSupabaseBreaks - Table breaks n\'existe pas encore, impossible de supprimer une pause');
+        return { success: false, error: 'Table breaks non disponible' };
+      }
+
       const { error: deleteError } = await supabase
         .from('breaks')
         .delete()
@@ -183,6 +228,17 @@ export function useSupabaseBreaks(filters?: BreakFilters) {
   const getEmployeeBreaks = async (employeeId: number, startDate: string, endDate: string) => {
     try {
       setError(null);
+
+      // Vérifier si la table breaks existe
+      const { data: tableExists, error: tableError } = await supabase
+        .from('breaks')
+        .select('id')
+        .limit(1);
+
+      if (tableError && tableError.message.includes('does not exist')) {
+        console.log('⚠️ useSupabaseBreaks - Table breaks n\'existe pas encore, retour d\'un tableau vide');
+        return { success: true, data: [] };
+      }
 
       const { data, error: fetchError } = await supabase
         .from('breaks')
@@ -216,6 +272,17 @@ export function useSupabaseBreaks(filters?: BreakFilters) {
   ) => {
     try {
       setError(null);
+
+      // Vérifier si la table breaks existe
+      const { data: tableExists, error: tableError } = await supabase
+        .from('breaks')
+        .select('id')
+        .limit(1);
+
+      if (tableError && tableError.message.includes('does not exist')) {
+        console.log('⚠️ useSupabaseBreaks - Table breaks n\'existe pas encore, impossible de créer des pauses récurrentes');
+        return { success: false, error: 'Table breaks non disponible' };
+      }
 
       const breaksToCreate = [];
       const currentDate = new Date(startDate);

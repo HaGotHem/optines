@@ -35,7 +35,10 @@ export default function PerformanceChart({ data, title }: PerformanceChartProps)
         <Text style={[styles.title, isDark && styles.titleDark]}>{title}</Text>
         <View style={styles.emptyState}>
           <Text style={[styles.emptyText, isDark && styles.emptyTextDark]}>
-            Aucune donnée disponible
+            Aucune donnée de performance disponible
+          </Text>
+          <Text style={[styles.emptyText, isDark && styles.emptyTextDark, { fontSize: 12, marginTop: 8 }]}>
+            Les managers n'ont pas encore créé de tâches
           </Text>
         </View>
       </View>
@@ -60,7 +63,7 @@ export default function PerformanceChart({ data, title }: PerformanceChartProps)
       <Text style={[styles.title, isDark && styles.titleDark]}>{title}</Text>
       
       <View style={styles.chartContainer}>
-        {data.map((manager, index) => (
+        {data.filter(manager => manager.totalPackages > 0).map((manager, index) => (
           <View key={manager.id} style={styles.barContainer}>
             <View style={styles.barInfo}>
               <Text style={[styles.managerName, isDark && styles.managerNameDark]} numberOfLines={1}>
