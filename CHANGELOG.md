@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.0.10] - 2025-07-20
+
+### 📊 Résumé des modifications
+- **Total des modifications:** 3
+- **Fichiers modifiés:** 3
+
+### 🔄 Derniers commits
+- `fc90afc` 🚀 Release v1.0.9 - Mise à jour automatique
+- `25f8dfa` 🚀 Release v1.0.8 - Mise à jour automatique
+- `c59c60a` 🚀 Release v1.0.7 - Mise à jour automatique
+- `8ed734b` 🚀 Release v1.0.6 - Mise à jour automatique
+- `0197bb8` 🚀 Release v1.0.5 - Mise à jour automatique
+- `780fcf1` 🚀 Release v1.0.4 - Mise à jour automatique
+- `c3d1383` 🚀 Release v1.0.3 - Mise à jour automatique
+- `30fe01d` 🚀 Release v1.0.2 - Mise à jour automatique
+- `28906db` 🚀 Release v1.0.1 - Mise à jour automatique
+- `9f2d20d` Correction du système de libération automatique des employés
+
+
 ## [1.0.9] - 2025-07-20
 
 ### 📊 Résumé des modifications
@@ -210,4 +229,30 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 ### 🔧 Corrections techniques
 - Fonction `createRelease()` ajoutée avec paramètre force
 - Gestion des arguments de ligne de commande
-- Retour de statut pour indiquer le succès/échec 
+- Retour de statut pour indiquer le succès/échec
+
+## [1.0.9] - 2024-12-19
+
+### 🎯 Correction de la branche cible
+- **Push sur main** au lieu de master (branche par défaut GitHub)
+- **Gestion automatique** des conflits d'historique
+- **Push forcé** automatique si nécessaire
+- **Compatibilité** avec les branches master et main
+
+### 🔧 Améliorations techniques
+- Push direct sur `origin main` depuis n'importe quelle branche locale
+- Gestion des erreurs de push avec fallback en mode forcé
+- Messages d'information détaillés sur le processus
+
+## [1.0.10] - 2024-12-19
+
+### 🐛 Correction de la confirmation dans release.bat
+- **Confirmation flexible** : accepte "oui", "o", "y", "yes", "1"
+- **Gestion des labels** : correction de la logique de navigation
+- **Option 2 fonctionnelle** : release forcée maintenant opérationnelle
+- **Interface améliorée** : messages d'erreur plus clairs
+
+### 🔧 Corrections techniques
+- Utilisation de labels (`goto`) pour éviter les problèmes de syntaxe
+- Support de multiples formats de confirmation
+- Gestion d'erreur améliorée dans les scripts batch 

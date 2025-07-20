@@ -52,15 +52,13 @@ if "%choice%"=="1" (
     echo    même si le seuil de modifications n'est pas atteint.
     echo.
     set /p confirm="Êtes-vous sûr ? (oui/non): "
-    if /i "%confirm%"=="oui" (
-        echo.
-        echo 🚀 Création de la release forcée...
-        call npm run force-release
-        echo.
-        echo ✅ Release forcée terminée !
-    ) else (
-        echo ❌ Release annulée
-    )
+    if /i "%confirm%"=="oui" goto do_force_release
+    if /i "%confirm%"=="o" goto do_force_release
+    if /i "%confirm%"=="y" goto do_force_release
+    if /i "%confirm%"=="yes" goto do_force_release
+    if /i "%confirm%"=="1" goto do_force_release
+    echo ❌ Release annulée
+    goto end
 ) else if "%choice%"=="3" (
     echo.
     echo 🔍 Vérification détaillée des modifications...
@@ -89,6 +87,22 @@ if "%choice%"=="1" (
     echo ❌ Choix invalide
 )
 
+    echo.
+    echo Appuyez sur une touche pour continuer...
+    pause >nul
+
+:do_force_release
 echo.
-echo Appuyez sur une touche pour continuer...
-pause >nul 
+echo 🚀 Création de la release forcée...
+call npm run force-release
+echo.
+echo ✅ Release forcée terminée !
+echo.
+echo 📋 Prochaines étapes :
+echo    1. Allez sur votre repository GitHub
+echo    2. Créez une nouvelle release avec le tag généré
+echo    3. Copiez le contenu du changelog affiché
+echo.
+goto end
+
+:end 

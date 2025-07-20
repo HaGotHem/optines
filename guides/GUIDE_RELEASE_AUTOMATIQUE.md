@@ -124,6 +124,7 @@ release.bat
 - Vérification automatique des dépendances
 - Options multiples (vérifier, créer, forcer)
 - Gestion d'erreurs intégrée
+- Confirmation flexible (oui, o, y, yes, 1)
 
 ## 📊 Exemple de Changelog Généré
 
@@ -157,8 +158,9 @@ release.bat
 ## ⚠️ Points d'Attention
 
 ### 1. Branche main
-- Assurez-vous d'être sur la branche `main`
-- Le script fait un push automatique sur `origin main`
+- Le script fait un push automatique sur `origin main` (branche par défaut GitHub)
+- Fonctionne même si vous êtes sur la branche `master` en local
+- Gestion automatique des conflits d'historique avec push forcé si nécessaire
 
 ### 2. Permissions Git
 - Le script nécessite les permissions pour :
