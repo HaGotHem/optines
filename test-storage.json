@@ -1,0 +1,10 @@
+{
+  "biometric_consent": "{\"accepted\":true,\"timestamp\":\"2025-07-21T16:21:30.769Z\",\"version\":\"1.0\",\"biometricType\":\"face\",\"dataRetention\":{\"enabled\":true,\"duration\":90,\"purpose\":\"Authentification sécurisée\"}}",
+  "biometric_settings": "{\"enabled\":true,\"requireUsername\":true,\"lastUpdated\":\"2025-07-21T16:21:30.770Z\"}",
+  "biometric_credentials": "{\"userId\":\"test_user_123\",\"username\":\"test.user\",\"role\":\"manager\",\"encryptedData\":\"test_encrypted_data\",\"createdAt\":\"2025-07-21T16:21:30.771Z\",\"lastUsed\":\"2025-07-21T16:21:30.771Z\",\"biometricType\":\"face\"}",
+  "biometric_audit_log": "[{\"id\":\"test_log_1\",\"userId\":\"test_user_123\",\"action\":\"enrollment\",\"timestamp\":\"2025-07-21T16:21:30.771Z\",\"success\":true,\"biometricType\":\"face\",\"deviceInfo\":\"Test Device\"},{\"id\":\"test_log_2\",\"userId\":\"test_user_123\",\"action\":\"authentication\",\"timestamp\":\"2025-07-21T16:21:30.771Z\",\"success\":true,\"biometricType\":\"face\",\"deviceInfo\":\"Test Device\"}]",
+  "biometric_encryption_key": "test_encryption_key_1753114890772",
+  "users": "[{\"id\":\"test_user_123\",\"username\":\"test.user\",\"email\":\"test@example.com\",\"role\":\"manager\",\"createdAt\":\"2025-07-21T16:21:30.772Z\"}]",
+  "gdpr_consent": "{\"accepted\":true,\"timestamp\":\"2025-07-21T16:21:30.772Z\",\"version\":\"1.0\",\"dataProcessing\":{\"essential\":true,\"analytics\":false,\"notifications\":false,\"personalization\":false}}",
+  "gdpr_requests": "[{\"id\":\"test_request_1\",\"userId\":\"test_user_123\",\"type\":\"access\",\"timestamp\":\"2025-07-21T16:21:30.772Z\",\"status\":\"completed\"}]"
+}

@@ -103,8 +103,21 @@ app.put('/api/users/:id', async (req, res) => {
     const { id } = req.params;
     const { email, username, role, password, full_name, section, store_id, is_active } = req.body;
 
+    console.log('🔧 Mise à jour utilisateur - Données reçues:', {
+      id,
+      email,
+      username,
+      role,
+      password: password ? '[PRESENT]' : '[ABSENT]',
+      full_name,
+      section,
+      store_id,
+      is_active
+    });
+
     // Vérifier que le magasin existe si fourni
     if (store_id) {
+      console.log('🔍 Vérification du magasin:', store_id);
       const { data: store, error: storeError } = await supabase
         .from('stores')
         .select('id')
@@ -112,8 +125,10 @@ app.put('/api/users/:id', async (req, res) => {
         .single();
 
       if (storeError || !store) {
+        console.error('❌ Magasin non trouvé:', store_id, storeError);
         return res.status(400).json({ error: 'Le magasin spécifié n\'existe pas' });
       }
+      console.log('✅ Magasin trouvé:', store);
     }
 
     // Préparer les mises à jour pour Auth
@@ -137,10 +152,15 @@ app.put('/api/users/:id', async (req, res) => {
 
     // 1. Mettre à jour dans Auth (si il y a des changements)
     if (Object.keys(authUpdates).length > 0) {
+      console.log('🔐 Mise à jour Auth:', authUpdates);
       const { error: authError } = await supabase.auth.admin.updateUserById(id, authUpdates);
       if (authError) {
+        console.error('❌ Erreur Auth:', authError);
         return res.status(400).json({ error: authError.message });
       }
+      console.log('✅ Mise à jour Auth réussie');
+    } else {
+      console.log('ℹ️  Aucune mise à jour Auth nécessaire');
     }
 
     // 2. Mettre à jour dans la table users
@@ -154,20 +174,26 @@ app.put('/api/users/:id', async (req, res) => {
     if (is_active !== undefined) userUpdates.is_active = is_active;
 
     if (Object.keys(userUpdates).length > 0) {
+      console.log('🗄️  Mise à jour base de données:', userUpdates);
       const { error: dbError } = await supabase
         .from('users')
         .update(userUpdates)
         .eq('id', id);
 
       if (dbError) {
+        console.error('❌ Erreur base de données:', dbError);
         return res.status(400).json({ error: dbError.message });
       }
+      console.log('✅ Mise à jour base de données réussie');
+    } else {
+      console.log('ℹ️  Aucune mise à jour base de données nécessaire');
     }
 
+    console.log('✅ Mise à jour utilisateur terminée avec succès');
     res.json({ success: true, message: 'Utilisateur modifié avec succès' });
 
   } catch (error) {
-    console.error('Erreur modification utilisateur:', error);
+    console.error('❌ Erreur modification utilisateur:', error);
     res.status(500).json({ error: 'Erreur interne du serveur' });
   }
 });
@@ -302,6 +328,40 @@ app.put('/api/stores/:id', async (req, res) => {
     const { id } = req.params;
     const updates = req.body;
 
+    // Si le magasin est désactivé, désactiver tous les employés de ce magasin
+    if (updates.is_active === false) {
+      console.log(`🔴 Désactivation du magasin ${id} - Désactivation des employés...`);
+      
+      // Désactiver tous les utilisateurs du magasin
+      const { error: usersError } = await supabase
+        .from('users')
+        .update({ is_active: false })
+        .eq('store_id', id);
+
+      if (usersError) {
+        console.error('Erreur lors de la désactivation des utilisateurs:', usersError);
+        return res.status(400).json({ error: `Erreur lors de la désactivation des utilisateurs: ${usersError.message}` });
+      }
+
+      // Désactiver tous les employés (team_members) du magasin
+      const { error: employeesError } = await supabase
+        .from('team_members')
+        .update({ is_active: false })
+        .eq('store_id', id);
+
+      if (employeesError) {
+        console.error('Erreur lors de la désactivation des employés:', employeesError);
+        // Ne pas retourner d'erreur ici car la table team_members pourrait ne pas exister
+        // ou la colonne is_active pourrait ne pas exister encore
+        if (employeesError.message.includes('column "is_active" does not exist')) {
+          console.log('⚠️ Colonne is_active non trouvée dans team_members - ignorée');
+        }
+      }
+
+      console.log(`✅ Tous les employés du magasin ${id} ont été désactivés`);
+    }
+
+    // Mettre à jour le magasin
     const { error } = await supabase
       .from('stores')
       .update(updates)
@@ -311,7 +371,11 @@ app.put('/api/stores/:id', async (req, res) => {
       return res.status(400).json({ error: error.message });
     }
 
-    res.json({ success: true, message: 'Magasin modifié avec succès' });
+    const message = updates.is_active === false 
+      ? 'Magasin désactivé avec succès. Tous les employés de ce magasin ont également été désactivés.'
+      : 'Magasin modifié avec succès';
+
+    res.json({ success: true, message });
 
   } catch (error) {
     console.error('Erreur modification magasin:', error);

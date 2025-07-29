@@ -11,4 +11,10 @@ config.resolver.alias = {
 // Configuration pour le support TypeScript
 config.resolver.sourceExts.push('ts', 'tsx');
 
+// Configuration pour éviter les conflits
+config.server = {
+  ...config.server,
+  port: 8084,
+};
+
 module.exports = config; 
